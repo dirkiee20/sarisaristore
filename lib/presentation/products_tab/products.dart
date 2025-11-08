@@ -20,6 +20,9 @@ class _ProductsTabState extends State<ProductsTab>
   String _searchQuery = '';
   String? _selectedCategory;
   bool _isLoading = false;
+  bool _showLowStock = false;
+  bool _showHighProfit = false;
+  bool _showRecentUpdates = false;
 
   // Mock data for products
   final List<Map<String, dynamic>> _allProducts = [
@@ -147,6 +150,27 @@ class _ProductsTabState extends State<ProductsTab>
         return name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
             category.toLowerCase().contains(_searchQuery.toLowerCase()) ||
             barcode.contains(_searchQuery);
+      }).toList();
+    }
+
+    // Apply additional filters
+    if (_showLowStock) {
+      filtered =
+          filtered.where((product) => (product["stock"] as int) <= 10).toList();
+    }
+
+    if (_showHighProfit) {
+      filtered = filtered
+          .where((product) => (product["profitMargin"] as double) >= 30.0)
+          .toList();
+    }
+
+    if (_showRecentUpdates) {
+      final recentThreshold =
+          DateTime.now().subtract(const Duration(hours: 24));
+      filtered = filtered.where((product) {
+        final lastUpdated = product["lastUpdated"] as DateTime;
+        return lastUpdated.isAfter(recentThreshold);
       }).toList();
     }
 
@@ -480,69 +504,79 @@ class _ProductsTabState extends State<ProductsTab>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(4.w),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 12.w,
-              height: 0.5.h,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: EdgeInsets.all(4.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 12.w,
+                height: 0.5.h,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                margin: EdgeInsets.only(bottom: 3.h),
               ),
-              margin: EdgeInsets.only(bottom: 3.h),
-            ),
-            Text(
-              'Filter Options',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-            SizedBox(height: 2.h),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'warning',
-                color: AppTheme.errorLight,
-                size: 24,
+              Text(
+                'Filter Options',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
-              title: const Text('Low Stock Items'),
-              subtitle: const Text('Products with 10 or fewer items'),
-              onTap: () {
-                Navigator.pop(context);
-                // Filter for low stock items
-              },
-            ),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'trending_up',
-                color: AppTheme.successLight,
-                size: 24,
+              SizedBox(height: 2.h),
+              CheckboxListTile(
+                value: _showLowStock,
+                onChanged: (value) {
+                  setModalState(() {
+                    _showLowStock = value ?? false;
+                  });
+                  setState(() {}); // Update parent state for filtering
+                },
+                title: const Text('Low Stock Items'),
+                subtitle: const Text('Products with 10 or fewer items'),
+                secondary: CustomIconWidget(
+                  iconName: 'warning',
+                  color: AppTheme.errorLight,
+                  size: 24,
+                ),
               ),
-              title: const Text('High Profit Margin'),
-              subtitle: const Text('Products with 30%+ profit margin'),
-              onTap: () {
-                Navigator.pop(context);
-                // Filter for high profit items
-              },
-            ),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'schedule',
-                color: AppTheme.primaryLight,
-                size: 24,
+              CheckboxListTile(
+                value: _showHighProfit,
+                onChanged: (value) {
+                  setModalState(() {
+                    _showHighProfit = value ?? false;
+                  });
+                  setState(() {}); // Update parent state for filtering
+                },
+                title: const Text('High Profit Margin'),
+                subtitle: const Text('Products with 30%+ profit margin'),
+                secondary: CustomIconWidget(
+                  iconName: 'trending_up',
+                  color: AppTheme.successLight,
+                  size: 24,
+                ),
               ),
-              title: const Text('Recently Updated'),
-              subtitle: const Text('Products updated in last 24 hours'),
-              onTap: () {
-                Navigator.pop(context);
-                // Filter for recently updated items
-              },
-            ),
-            SizedBox(height: 2.h),
-          ],
+              CheckboxListTile(
+                value: _showRecentUpdates,
+                onChanged: (value) {
+                  setModalState(() {
+                    _showRecentUpdates = value ?? false;
+                  });
+                  setState(() {}); // Update parent state for filtering
+                },
+                title: const Text('Recently Updated'),
+                subtitle: const Text('Products updated in last 24 hours'),
+                secondary: CustomIconWidget(
+                  iconName: 'schedule',
+                  color: AppTheme.primaryLight,
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -552,6 +586,9 @@ class _ProductsTabState extends State<ProductsTab>
     setState(() {
       _searchQuery = '';
       _selectedCategory = null;
+      _showLowStock = false;
+      _showHighProfit = false;
+      _showRecentUpdates = false;
       _searchController.clear();
     });
   }
