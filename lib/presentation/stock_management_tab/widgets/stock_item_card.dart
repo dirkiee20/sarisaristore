@@ -3,9 +3,10 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../data/models/product_model.dart';
 
 class StockItemCard extends StatelessWidget {
-  final Map<String, dynamic> product;
+  final ProductModel product;
   final VoidCallback? onStockAdjustment;
   final VoidCallback? onReorder;
   final VoidCallback? onTap;
@@ -22,8 +23,8 @@ class StockItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentStock = (product['currentStock'] as num?)?.toInt() ?? 0;
-    final reorderLevel = (product['reorderLevel'] as num?)?.toInt() ?? 10;
+    final currentStock = product.stock;
+    final reorderLevel = 10; // Using default reorder level
     final stockStatus = _getStockStatus(currentStock, reorderLevel);
     final statusColor = _getStatusColor(stockStatus);
     final isLowStock =
@@ -32,7 +33,7 @@ class StockItemCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
       child: Slidable(
-        key: ValueKey(product['id']),
+        key: ValueKey(product.id),
         startActionPane: ActionPane(
           motion: const ScrollMotion(),
           children: [
@@ -96,8 +97,7 @@ class StockItemCard extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  product['name'] as String? ??
-                                      'Unknown Product',
+                                  product.name,
                                   style: AppTheme
                                       .lightTheme.textTheme.titleMedium
                                       ?.copyWith(
@@ -120,7 +120,7 @@ class StockItemCard extends StatelessWidget {
                           ),
                           SizedBox(height: 1.h),
                           Text(
-                            product['category'] as String? ?? 'General',
+                            product.category,
                             style: AppTheme.lightTheme.textTheme.bodySmall
                                 ?.copyWith(
                               color: AppTheme.textSecondaryLight,
@@ -187,7 +187,7 @@ class StockItemCard extends StatelessWidget {
                     Expanded(
                       child: _buildStockInfo(
                         'Unit Price',
-                        '₱${(product['price'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                        '₱${product.sellingPrice.toStringAsFixed(2)}',
                         CustomIconWidget(
                           iconName: 'attach_money',
                           color: AppTheme.textSecondaryLight,

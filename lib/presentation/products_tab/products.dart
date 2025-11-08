@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../data/models/product_model.dart';
+import '../../services/product_service.dart';
 import './widgets/empty_state_widget.dart';
 import './widgets/filter_chips_widget.dart';
 import './widgets/product_card_widget.dart';
@@ -17,15 +19,20 @@ class ProductsTab extends StatefulWidget {
 class _ProductsTabState extends State<ProductsTab>
     with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  final ProductService _productService = ProductService();
   String _searchQuery = '';
   String? _selectedCategory;
-  bool _isLoading = false;
+  bool _isLoading = true;
+  bool _isDemoMode = false;
   bool _showLowStock = false;
   bool _showHighProfit = false;
   bool _showRecentUpdates = false;
 
-  // Mock data for products
-  final List<Map<String, dynamic>> _allProducts = [
+  List<ProductModel> _products = [];
+  List<String> _categories = [];
+
+  // Demo data for products (used when no real data exists)
+  final List<Map<String, dynamic>> _demoProducts = [
     {
       "id": 1,
       "name": "Coca-Cola 330ml",
@@ -119,8 +126,8 @@ class _ProductsTabState extends State<ProductsTab>
     },
   ];
 
-  // Mock categories with product counts
-  final List<Map<String, dynamic>> _categories = [
+  // Demo categories with product counts
+  final List<Map<String, dynamic>> _demoCategories = [
     {"name": "Beverages", "count": 1},
     {"name": "Instant Noodles", "count": 1},
     {"name": "Household", "count": 1},
@@ -130,7 +137,30 @@ class _ProductsTabState extends State<ProductsTab>
   ];
 
   List<Map<String, dynamic>> get _filteredProducts {
-    List<Map<String, dynamic>> filtered = _allProducts;
+    List<Map<String, dynamic>> filtered;
+
+    if (_isDemoMode) {
+      filtered = List.from(_demoProducts);
+    } else {
+      // Convert ProductModel to Map for compatibility with existing UI
+      filtered = _products
+          .map((product) => {
+                "id": product.id,
+                "name": product.name,
+                "category": product.category,
+                "stock": product.stock,
+                "costPrice": product.costPrice,
+                "sellingPrice": "₱${product.sellingPrice.toStringAsFixed(2)}",
+                "profitMargin": product.profitMargin,
+                "image": product.imagePath ??
+                    "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+                "semanticLabel": "${product.name} product image",
+                "barcode": product.barcode,
+                "description": product.description,
+                "lastUpdated": product.updatedAt,
+              })
+          .toList();
+    }
 
     // Filter by category
     if (_selectedCategory != null) {
@@ -178,9 +208,52 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final products = await _productService.getAllProducts();
+
+      // Check if we should use demo mode (no real products)
+      if (products.isEmpty) {
+        setState(() {
+          _isDemoMode = true;
+          _isLoading = false;
+        });
+      } else {
+        // Get unique categories from real products
+        final categories = products.map((p) => p.category).toSet().toList();
+
+        setState(() {
+          _products = products;
+          _categories = categories;
+          _isDemoMode = false;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      // For demo purposes, fall back to demo mode on error
+      setState(() {
+        _isDemoMode = true;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -224,7 +297,7 @@ class _ProductsTabState extends State<ProductsTab>
                         ),
                         SizedBox(height: 0.5.h),
                         Text(
-                          '${_allProducts.length} items in inventory',
+                          '${_filteredProducts.length} items in inventory${_isDemoMode ? " (Demo)" : ""}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: isLight
                                 ? AppTheme.textSecondaryLight
@@ -263,7 +336,15 @@ class _ProductsTabState extends State<ProductsTab>
 
             // Filter Chips
             FilterChipsWidget(
-              categories: _categories,
+              categories: _isDemoMode
+                  ? _demoCategories
+                  : _categories
+                      .map((cat) => {
+                            "name": cat,
+                            "count":
+                                _products.where((p) => p.category == cat).length
+                          })
+                      .toList(),
               selectedCategory: _selectedCategory,
               onCategorySelected: (category) {
                 setState(() {
@@ -415,22 +496,26 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   Future<void> _refreshProducts() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() {
-      _isLoading = false;
-    });
+    if (_isDemoMode) {
+      // Simulate refresh for demo mode
+      setState(() {
+        _isLoading = true;
+      });
+      await Future.delayed(const Duration(seconds: 1));
+      setState(() {
+        _isLoading = false;
+      });
+    } else {
+      // Refresh real data
+      await _loadProducts();
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Products refreshed successfully'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(
+              'Products refreshed successfully${_isDemoMode ? " (Demo)" : ""}'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -616,26 +701,63 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   void _deleteProduct(Map<String, dynamic> product) {
-    setState(() {
-      _allProducts.removeWhere((p) => p["id"] == product["id"]);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${product["name"]} deleted'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            setState(() {
-              _allProducts.add(product);
-            });
-          },
+    if (_isDemoMode) {
+      // Can't delete demo products
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot delete demo products'),
+          backgroundColor: Colors.orange,
         ),
-      ),
-    );
+      );
+      return;
+    }
+
+    // Delete from database
+    final productId = product["id"] as int?;
+    if (productId != null) {
+      _productService.deleteProduct(productId).then((_) {
+        _loadProducts(); // Refresh the list
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${product["name"]} deleted'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () {
+                // Note: Undo functionality would require more complex implementation
+                // For now, just show a message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content:
+                        Text('Undo not implemented for database operations'),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }).catchError((e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete product: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      });
+    }
   }
 
   void _updateStock(Map<String, dynamic> product) {
+    if (_isDemoMode) {
+      // Can't update demo products
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot update demo products'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -651,18 +773,30 @@ class _ProductsTabState extends State<ProductsTab>
                 labelText: 'New stock quantity',
                 border: OutlineInputBorder(),
               ),
-              onSubmitted: (value) {
+              onSubmitted: (value) async {
                 final newStock = int.tryParse(value);
                 if (newStock != null) {
-                  setState(() {
-                    product["stock"] = newStock;
-                  });
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Stock updated for ${product["name"]}'),
-                    ),
-                  );
+                  final productId = product["id"] as int?;
+                  if (productId != null) {
+                    try {
+                      await _productService.adjustStock(
+                          productId, newStock, 'Manual Adjustment');
+                      Navigator.of(context).pop();
+                      _loadProducts(); // Refresh the list
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Stock updated for ${product["name"]}'),
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to update stock: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
                 }
               },
             ),

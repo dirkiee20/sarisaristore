@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../data/models/product_model.dart';
+import '../../services/product_service.dart';
 import './widgets/barcode_scanner_widget.dart';
 import './widgets/category_picker_widget.dart';
 import './widgets/pricing_calculator_widget.dart';
@@ -155,8 +157,23 @@ class _AddProductScreenState extends State<AddProductScreen> {
     });
 
     try {
-      // Simulate saving product
-      await Future.delayed(const Duration(seconds: 2));
+      final product = ProductModel(
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim(),
+        category: _selectedCategory!,
+        barcode: _barcodeController.text.trim().isEmpty
+            ? null
+            : _barcodeController.text.trim(),
+        costPrice: double.parse(_costController.text),
+        sellingPrice: double.parse(_priceController.text),
+        stock: int.parse(_quantityController.text),
+        imagePath: _selectedImage?.path,
+      );
+
+      final productService = ProductService();
+      await productService.createProduct(product);
 
       if (mounted) {
         HapticFeedback.mediumImpact();
@@ -185,14 +202,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
           ),
         );
 
-        // Navigate back to products tab
-        Navigator.pushReplacementNamed(context, '/products-tab');
+        // Navigate back to stock management tab
+        Navigator.pushReplacementNamed(context, '/stock-management-tab');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to save product. Please try again.'),
+          SnackBar(
+            content: Text('Failed to save product: $e'),
             backgroundColor: Colors.red,
           ),
         );

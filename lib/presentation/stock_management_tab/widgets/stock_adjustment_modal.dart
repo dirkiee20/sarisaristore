@@ -3,9 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../data/models/product_model.dart';
 
 class StockAdjustmentModal extends StatefulWidget {
-  final Map<String, dynamic> product;
+  final ProductModel product;
   final Function(int newStock, String reason) onStockUpdated;
 
   const StockAdjustmentModal({
@@ -39,7 +40,7 @@ class _StockAdjustmentModalState extends State<StockAdjustmentModal> {
   @override
   void initState() {
     super.initState();
-    _currentStock = (widget.product['currentStock'] as num?)?.toInt() ?? 0;
+    _currentStock = widget.product.stock;
     _newStock = _currentStock;
     _stockController = TextEditingController(text: _newStock.toString());
   }
@@ -95,7 +96,7 @@ class _StockAdjustmentModalState extends State<StockAdjustmentModal> {
                     ),
                     SizedBox(height: 0.5.h),
                     Text(
-                      widget.product['name'] as String? ?? 'Unknown Product',
+                      widget.product.name,
                       style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                         color: AppTheme.textSecondaryLight,
                       ),

@@ -4,6 +4,8 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../widgets/custom_bottom_bar.dart';
+import '../../data/models/product_model.dart';
+import '../../services/product_service.dart';
 import './widgets/stock_adjustment_modal.dart';
 import './widgets/stock_filter_chips.dart';
 import './widgets/stock_item_card.dart';
@@ -22,101 +24,14 @@ class _StockManagementTabState extends State<StockManagementTab>
   String _selectedFilter = 'All';
   String _sortBy = 'name';
   bool _isMultiSelectMode = false;
+  bool _isLoading = true;
+  String? _errorMessage;
   final Set<int> _selectedProducts = {};
   late AnimationController _fabAnimationController;
   late Animation<double> _fabAnimation;
+  final ProductService _productService = ProductService();
 
-  // Mock data for stock management
-  final List<Map<String, dynamic>> _stockData = [
-    {
-      "id": 1,
-      "name": "Coca-Cola 1.5L",
-      "category": "Beverages",
-      "currentStock": 0,
-      "reorderLevel": 10,
-      "price": 65.00,
-      "barcode": "4902430123456",
-      "lastUpdated": DateTime.now().subtract(const Duration(hours: 2)),
-      "supplier": "Coca-Cola Philippines",
-    },
-    {
-      "id": 2,
-      "name": "Lucky Me Pancit Canton",
-      "category": "Instant Noodles",
-      "currentStock": 5,
-      "reorderLevel": 20,
-      "price": 15.50,
-      "barcode": "4902430789012",
-      "lastUpdated": DateTime.now().subtract(const Duration(hours: 1)),
-      "supplier": "Monde Nissin",
-    },
-    {
-      "id": 3,
-      "name": "Tide Powder 1kg",
-      "category": "Household",
-      "currentStock": 25,
-      "reorderLevel": 15,
-      "price": 185.00,
-      "barcode": "4902430345678",
-      "lastUpdated": DateTime.now().subtract(const Duration(minutes: 30)),
-      "supplier": "Procter & Gamble",
-    },
-    {
-      "id": 4,
-      "name": "San Miguel Beer 330ml",
-      "category": "Beverages",
-      "currentStock": 8,
-      "reorderLevel": 12,
-      "price": 45.00,
-      "barcode": "4902430901234",
-      "lastUpdated": DateTime.now().subtract(const Duration(hours: 3)),
-      "supplier": "San Miguel Corporation",
-    },
-    {
-      "id": 5,
-      "name": "Maggi Magic Sarap 50g",
-      "category": "Seasonings",
-      "currentStock": 35,
-      "reorderLevel": 20,
-      "price": 28.75,
-      "barcode": "4902430567890",
-      "lastUpdated": DateTime.now().subtract(const Duration(minutes: 45)),
-      "supplier": "Nestle Philippines",
-    },
-    {
-      "id": 6,
-      "name": "Palmolive Shampoo 400ml",
-      "category": "Personal Care",
-      "currentStock": 3,
-      "reorderLevel": 10,
-      "price": 125.00,
-      "barcode": "4902430234567",
-      "lastUpdated": DateTime.now().subtract(const Duration(hours: 4)),
-      "supplier": "Colgate-Palmolive",
-    },
-    {
-      "id": 7,
-      "name": "Skyflakes Crackers",
-      "category": "Snacks",
-      "currentStock": 18,
-      "reorderLevel": 15,
-      "price": 32.50,
-      "barcode": "4902430678901",
-      "lastUpdated": DateTime.now().subtract(const Duration(hours: 2)),
-      "supplier": "Ricoa",
-    },
-    {
-      "id": 8,
-      "name": "Downy Fabric Conditioner 1L",
-      "category": "Household",
-      "currentStock": 12,
-      "reorderLevel": 8,
-      "price": 155.00,
-      "barcode": "4902430890123",
-      "lastUpdated": DateTime.now().subtract(const Duration(minutes: 15)),
-      "supplier": "Procter & Gamble",
-    },
-  ];
+  List<ProductModel> _products = [];
 
   @override
   void initState() {
@@ -129,6 +44,7 @@ class _StockManagementTabState extends State<StockManagementTab>
       CurvedAnimation(parent: _fabAnimationController, curve: Curves.easeInOut),
     );
     _fabAnimationController.forward();
+    _loadProducts();
   }
 
   @override
@@ -137,10 +53,151 @@ class _StockManagementTabState extends State<StockManagementTab>
     super.dispose();
   }
 
+  Future<void> _loadProducts() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final products = await _productService.getAllProducts();
+      setState(() {
+        _products = products;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load products: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredProducts = _getFilteredProducts();
     final filterCounts = _getFilterCounts();
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        appBar: AppBar(
+          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          title: Text(
+            'Stock Management',
+            style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimaryLight,
+            ),
+          ),
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+        bottomNavigationBar: CustomBottomBar(
+          currentIndex: 2,
+          onTap: (index) {
+            switch (index) {
+              case 0:
+                Navigator.pushReplacementNamed(context, '/products-tab');
+                break;
+              case 1:
+                Navigator.pushReplacementNamed(context, '/analytics-tab');
+                break;
+              case 2:
+                // Already on Stock Management tab
+                break;
+            }
+          },
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        appBar: AppBar(
+          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          title: Text(
+            'Stock Management',
+            style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimaryLight,
+            ),
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CustomIconWidget(
+                iconName: 'error_outline',
+                color: AppTheme.errorLight,
+                size: 80,
+              ),
+              SizedBox(height: 3.h),
+              Text(
+                'Failed to load products',
+                style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+                  color: AppTheme.textSecondaryLight,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                _errorMessage!,
+                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.textDisabledLight,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 4.h),
+              ElevatedButton.icon(
+                onPressed: _loadProducts,
+                icon: CustomIconWidget(
+                  iconName: 'refresh',
+                  color: Colors.white,
+                  size: 20,
+                ),
+                label: Text(
+                  'Retry',
+                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryLight,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: CustomBottomBar(
+          currentIndex: 2,
+          onTap: (index) {
+            switch (index) {
+              case 0:
+                Navigator.pushReplacementNamed(context, '/products-tab');
+                break;
+              case 1:
+                Navigator.pushReplacementNamed(context, '/analytics-tab');
+                break;
+              case 2:
+                // Already on Stock Management tab
+                break;
+            }
+          },
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -312,14 +369,13 @@ class _StockManagementTabState extends State<StockManagementTab>
                       itemCount: filteredProducts.length,
                       itemBuilder: (context, index) {
                         final product = filteredProducts[index];
-                        final productId = product['id'] as int;
                         final isSelected =
-                            _selectedProducts.contains(productId);
+                            _selectedProducts.contains(product.id!);
 
                         return StockItemCard(
                           product: product,
                           isSelected: isSelected,
-                          onTap: () => _handleProductTap(productId),
+                          onTap: () => _handleProductTap(product.id!),
                           onStockAdjustment: () =>
                               _showStockAdjustmentModal(product),
                           onReorder: () => _handleReorder(product),
@@ -369,15 +425,15 @@ class _StockManagementTabState extends State<StockManagementTab>
     );
   }
 
-  List<Map<String, dynamic>> _getFilteredProducts() {
-    List<Map<String, dynamic>> filtered = List.from(_stockData);
+  List<ProductModel> _getFilteredProducts() {
+    List<ProductModel> filtered = List.from(_products);
 
     // Apply search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((product) {
-        final name = (product['name'] as String).toLowerCase();
-        final barcode = (product['barcode'] as String).toLowerCase();
-        final category = (product['category'] as String).toLowerCase();
+        final name = product.name.toLowerCase();
+        final barcode = (product.barcode ?? '').toLowerCase();
+        final category = product.category.toLowerCase();
         final query = _searchQuery.toLowerCase();
 
         return name.contains(query) ||
@@ -389,9 +445,8 @@ class _StockManagementTabState extends State<StockManagementTab>
     // Apply status filter
     if (_selectedFilter != 'All') {
       filtered = filtered.where((product) {
-        final currentStock = (product['currentStock'] as num).toInt();
-        final reorderLevel = (product['reorderLevel'] as num).toInt();
-        final status = _getStockStatus(currentStock, reorderLevel);
+        final status = _getStockStatus(
+            product.stock, 10); // Using default reorder level of 10
         return status == _selectedFilter;
       }).toList();
     }
@@ -400,16 +455,14 @@ class _StockManagementTabState extends State<StockManagementTab>
     filtered.sort((a, b) {
       switch (_sortBy) {
         case 'name':
-          return (a['name'] as String).compareTo(b['name'] as String);
+          return a.name.compareTo(b.name);
         case 'stock_low':
-          return (a['currentStock'] as num).compareTo(b['currentStock'] as num);
+          return a.stock.compareTo(b.stock);
         case 'stock_high':
-          return (b['currentStock'] as num).compareTo(a['currentStock'] as num);
+          return b.stock.compareTo(a.stock);
         case 'status':
-          final statusA = _getStockStatus((a['currentStock'] as num).toInt(),
-              (a['reorderLevel'] as num).toInt());
-          final statusB = _getStockStatus((b['currentStock'] as num).toInt(),
-              (b['reorderLevel'] as num).toInt());
+          final statusA = _getStockStatus(a.stock, 10);
+          final statusB = _getStockStatus(b.stock, 10);
           final statusOrder = {
             'Out of Stock': 0,
             'Low Stock': 1,
@@ -418,7 +471,7 @@ class _StockManagementTabState extends State<StockManagementTab>
           return (statusOrder[statusA] ?? 3)
               .compareTo(statusOrder[statusB] ?? 3);
         case 'category':
-          return (a['category'] as String).compareTo(b['category'] as String);
+          return a.category.compareTo(b.category);
         default:
           return 0;
       }
@@ -429,16 +482,15 @@ class _StockManagementTabState extends State<StockManagementTab>
 
   Map<String, int> _getFilterCounts() {
     final counts = <String, int>{
-      'All': _stockData.length,
+      'All': _products.length,
       'In Stock': 0,
       'Low Stock': 0,
       'Out of Stock': 0,
     };
 
-    for (final product in _stockData) {
-      final currentStock = (product['currentStock'] as num).toInt();
-      final reorderLevel = (product['reorderLevel'] as num).toInt();
-      final status = _getStockStatus(currentStock, reorderLevel);
+    for (final product in _products) {
+      final status = _getStockStatus(
+          product.stock, 10); // Using default reorder level of 10
       counts[status] = (counts[status] ?? 0) + 1;
     }
 
@@ -452,10 +504,8 @@ class _StockManagementTabState extends State<StockManagementTab>
   }
 
   int _getLowStockCount() {
-    return _stockData.where((product) {
-      final currentStock = (product['currentStock'] as num).toInt();
-      final reorderLevel = (product['reorderLevel'] as num).toInt();
-      return currentStock <= reorderLevel;
+    return _products.where((product) {
+      return product.stock <= 10; // Using default reorder level of 10
     }).length;
   }
 
@@ -486,8 +536,7 @@ class _StockManagementTabState extends State<StockManagementTab>
   void _selectAllProducts() {
     setState(() {
       _selectedProducts.clear();
-      _selectedProducts
-          .addAll(_getFilteredProducts().map((p) => p['id'] as int));
+      _selectedProducts.addAll(_getFilteredProducts().map((p) => p.id!));
     });
     HapticFeedback.selectionClick();
   }
@@ -499,7 +548,7 @@ class _StockManagementTabState extends State<StockManagementTab>
     });
   }
 
-  void _showStockAdjustmentModal(Map<String, dynamic> product) {
+  void _showStockAdjustmentModal(ProductModel product) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -510,22 +559,31 @@ class _StockManagementTabState extends State<StockManagementTab>
         ),
         child: StockAdjustmentModal(
           product: product,
-          onStockUpdated: (newStock, reason) {
-            setState(() {
-              final index =
-                  _stockData.indexWhere((p) => p['id'] == product['id']);
-              if (index != -1) {
-                _stockData[index]['currentStock'] = newStock;
-                _stockData[index]['lastUpdated'] = DateTime.now();
-              }
-            });
+          onStockUpdated: (newStock, reason) async {
+            try {
+              await _productService.adjustStock(product.id!, newStock, reason);
+              await _loadProducts(); // Refresh the list
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Stock updated successfully'),
+                  backgroundColor: AppTheme.successLight,
+                ),
+              );
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Failed to update stock: $e'),
+                  backgroundColor: AppTheme.errorLight,
+                ),
+              );
+            }
           },
         ),
       ),
     );
   }
 
-  void _handleReorder(Map<String, dynamic> product) {
+  void _handleReorder(ProductModel product) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -545,7 +603,7 @@ class _StockManagementTabState extends State<StockManagementTab>
             ),
             SizedBox(height: 1.h),
             Text(
-              product['name'] as String,
+              product.name,
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppTheme.primaryLight,
@@ -553,19 +611,13 @@ class _StockManagementTabState extends State<StockManagementTab>
             ),
             SizedBox(height: 2.h),
             Text(
-              'Supplier: ${product['supplier'] as String}',
+              'Current Stock: ${product.stock} units',
               style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                 color: AppTheme.textSecondaryLight,
               ),
             ),
             Text(
-              'Current Stock: ${product['currentStock']} units',
-              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-            Text(
-              'Reorder Level: ${product['reorderLevel']} units',
+              'Reorder Level: 10 units', // Using default reorder level
               style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                 color: AppTheme.textSecondaryLight,
               ),
@@ -587,11 +639,11 @@ class _StockManagementTabState extends State<StockManagementTab>
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content:
-                      Text('Reorder request created for ${product['name']}'),
+                  content: Text('Reorder request created for ${product.name}'),
                   backgroundColor: AppTheme.successLight,
                 ),
               );
+              // TODO: Implement actual reorder functionality with backend
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryLight,
@@ -610,7 +662,13 @@ class _StockManagementTabState extends State<StockManagementTab>
     );
   }
 
-  void _bulkStockUpdate() {
+  void _bulkStockUpdate() async {
+    if (_selectedProducts.isEmpty) return;
+
+    // Get selected products
+    final selectedProducts =
+        _products.where((p) => _selectedProducts.contains(p.id)).toList();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -620,9 +678,30 @@ class _StockManagementTabState extends State<StockManagementTab>
             fontWeight: FontWeight.w600,
           ),
         ),
-        content: Text(
-          'Update stock levels for ${_selectedProducts.length} selected products?',
-          style: AppTheme.lightTheme.textTheme.bodyMedium,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Update stock levels for ${selectedProducts.length} selected products?',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 2.h),
+            ...selectedProducts.take(3).map((product) => Padding(
+                  padding: EdgeInsets.only(bottom: 1.h),
+                  child: Text(
+                    '• ${product.name} (${product.stock} units)',
+                    style: AppTheme.lightTheme.textTheme.bodySmall,
+                  ),
+                )),
+            if (selectedProducts.length > 3)
+              Text(
+                '... and ${selectedProducts.length - 3} more',
+                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                  color: AppTheme.textSecondaryLight,
+                ),
+              ),
+          ],
         ),
         actions: [
           TextButton(
@@ -635,15 +714,26 @@ class _StockManagementTabState extends State<StockManagementTab>
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              _exitMultiSelectMode();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Bulk update feature coming soon'),
-                  backgroundColor: AppTheme.primaryLight,
-                ),
-              );
+              try {
+                // TODO: Implement bulk stock adjustment with proper UI
+                // For now, just show a message
+                _exitMultiSelectMode();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Bulk update feature coming soon'),
+                    backgroundColor: AppTheme.primaryLight,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to update stock: $e'),
+                    backgroundColor: AppTheme.errorLight,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryLight,
@@ -673,26 +763,29 @@ class _StockManagementTabState extends State<StockManagementTab>
   }
 
   Future<void> _refreshStockData() async {
-    // Simulate refresh delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    // Update last updated timestamps
-    setState(() {
-      for (final product in _stockData) {
-        product['lastUpdated'] = DateTime.now();
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Stock data refreshed'),
-        backgroundColor: AppTheme.successLight,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    try {
+      await _loadProducts();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Stock data refreshed'),
+          backgroundColor: AppTheme.successLight,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to refresh data: $e'),
+          backgroundColor: AppTheme.errorLight,
+        ),
+      );
+    }
   }
 
   void _showNotificationSettings(BuildContext context) {
+    final lowStockProducts =
+        _products.where((product) => product.stock <= 10).toList();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -707,48 +800,37 @@ class _StockManagementTabState extends State<StockManagementTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'You have ${_getLowStockCount()} products that need attention:',
+              'You have ${lowStockProducts.length} products that need attention:',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
             SizedBox(height: 2.h),
-            ..._stockData
-                .where((product) {
-                  final currentStock = (product['currentStock'] as num).toInt();
-                  final reorderLevel = (product['reorderLevel'] as num).toInt();
-                  return currentStock <= reorderLevel;
-                })
-                .take(3)
-                .map((product) {
-                  final status = _getStockStatus(
-                    (product['currentStock'] as num).toInt(),
-                    (product['reorderLevel'] as num).toInt(),
-                  );
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 1.h),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: status == 'Out of Stock'
-                                ? AppTheme.errorLight
-                                : AppTheme.warningLight,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        SizedBox(width: 2.w),
-                        Expanded(
-                          child: Text(
-                            '${product['name']} (${product['currentStock']} left)',
-                            style: AppTheme.lightTheme.textTheme.bodySmall,
-                          ),
-                        ),
-                      ],
+            ...lowStockProducts.take(3).map((product) {
+              final status = _getStockStatus(product.stock, 10);
+              return Padding(
+                padding: EdgeInsets.only(bottom: 1.h),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: status == 'Out of Stock'
+                            ? AppTheme.errorLight
+                            : AppTheme.warningLight,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  );
-                })
-                .toList(),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        '${product.name} (${product.stock} left)',
+                        style: AppTheme.lightTheme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ],
         ),
         actions: [
