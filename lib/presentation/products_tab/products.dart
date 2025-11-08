@@ -31,8 +31,7 @@ class _ProductsTabState extends State<ProductsTab>
       "costPrice": 15.00,
       "sellingPrice": "₱20.00",
       "profitMargin": 33.3,
-      "image":
-          "https://images.unsplash.com/photo-1675599591199-7bced32f7f97",
+      "image": "https://images.unsplash.com/photo-1675599591199-7bced32f7f97",
       "semanticLabel":
           "Red Coca-Cola can with classic logo on white background",
       "barcode": "1234567890123",
@@ -47,8 +46,7 @@ class _ProductsTabState extends State<ProductsTab>
       "costPrice": 12.00,
       "sellingPrice": "₱18.00",
       "profitMargin": 50.0,
-      "image":
-          "https://images.unsplash.com/photo-1654663772654-5a972cbbbbd1",
+      "image": "https://images.unsplash.com/photo-1654663772654-5a972cbbbbd1",
       "semanticLabel":
           "Package of instant noodles with colorful wrapper showing noodles and vegetables",
       "barcode": "2345678901234",
@@ -63,8 +61,7 @@ class _ProductsTabState extends State<ProductsTab>
       "costPrice": 85.00,
       "sellingPrice": "₱120.00",
       "profitMargin": 41.2,
-      "image":
-          "https://images.unsplash.com/photo-1517441275572-cba86fee9357",
+      "image": "https://images.unsplash.com/photo-1517441275572-cba86fee9357",
       "semanticLabel":
           "White and orange detergent powder box with Tide branding on store shelf",
       "barcode": "3456789012345",
@@ -80,8 +77,7 @@ class _ProductsTabState extends State<ProductsTab>
       "costPrice": 8.00,
       "sellingPrice": "₱12.00",
       "profitMargin": 50.0,
-      "image":
-          "https://images.unsplash.com/photo-1636995973906-5af7d9832adb",
+      "image": "https://images.unsplash.com/photo-1636995973906-5af7d9832adb",
       "semanticLabel":
           "Stack of golden brown crackers on white plate with crumbs scattered around",
       "barcode": "4567890123456",
@@ -96,8 +92,7 @@ class _ProductsTabState extends State<ProductsTab>
       "costPrice": 25.00,
       "sellingPrice": "₱35.00",
       "profitMargin": 40.0,
-      "image":
-          "https://images.unsplash.com/photo-1653389521505-26c8c519c8f0",
+      "image": "https://images.unsplash.com/photo-1653389521505-26c8c519c8f0",
       "semanticLabel":
           "White soap bar with blue Safeguard packaging on bathroom counter",
       "barcode": "5678901234567",
@@ -112,8 +107,7 @@ class _ProductsTabState extends State<ProductsTab>
       "costPrice": 1.00,
       "sellingPrice": "₱2.00",
       "profitMargin": 100.0,
-      "image":
-          "https://images.unsplash.com/photo-1601577045284-97693a5b2de5",
+      "image": "https://images.unsplash.com/photo-1601577045284-97693a5b2de5",
       "semanticLabel":
           "Brown coffee candies scattered on wooden surface with coffee beans",
       "barcode": "6789012345678",
@@ -353,39 +347,39 @@ class _ProductsTabState extends State<ProductsTab>
         },
         items: [
           BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'inventory_2_outlined',
-              color: AppTheme.primaryLight,
+            icon: Icon(
+              Icons.inventory_2_outlined,
+              color: AppTheme.textSecondaryLight,
               size: 24,
             ),
-            activeIcon: CustomIconWidget(
-              iconName: 'inventory_2',
+            activeIcon: Icon(
+              Icons.inventory_2,
               color: AppTheme.primaryLight,
               size: 24,
             ),
             label: 'Products',
           ),
           BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'analytics_outlined',
+            icon: Icon(
+              Icons.analytics_outlined,
               color: AppTheme.textSecondaryLight,
               size: 24,
             ),
-            activeIcon: CustomIconWidget(
-              iconName: 'analytics',
+            activeIcon: Icon(
+              Icons.analytics,
               color: AppTheme.primaryLight,
               size: 24,
             ),
             label: 'Analytics',
           ),
           BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'warehouse_outlined',
+            icon: Icon(
+              Icons.warehouse_outlined,
               color: AppTheme.textSecondaryLight,
               size: 24,
             ),
-            activeIcon: CustomIconWidget(
-              iconName: 'warehouse',
+            activeIcon: Icon(
+              Icons.warehouse,
               color: AppTheme.primaryLight,
               size: 24,
             ),
