@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import '../../widgets/custom_icon_widget.dart';
+import '../../services/analytics_service.dart';
 import './widgets/expense_widget.dart';
 import './widgets/insights_card_widget.dart';
 import './widgets/metric_card_widget.dart';
@@ -22,94 +23,249 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     with TickerProviderStateMixin {
   String _selectedPeriod = 'Today';
   final List<String> _periods = ['Today', 'Week', 'Month', 'Year'];
+  final AnalyticsService _analyticsService = AnalyticsService();
+  bool _isDemoMode = false;
+  bool _isLoading = true;
 
-  // Mock data for analytics
-  final List<Map<String, dynamic>> _mockMetrics = [
-    {
-      "title": "Today's Revenue",
-      "value": "₱2,450.00",
-      "subtitle": "From 15 transactions",
-      "changePercentage": 12.5,
-      "isPositive": true,
-    },
-    {
-      "title": "Total Profit",
-      "value": "₱1,230.00",
-      "subtitle": "50.2% margin",
-      "changePercentage": 8.3,
-      "isPositive": true,
-    },
-    {
-      "title": "Expenses",
-      "value": "₱890.00",
-      "subtitle": "Operational costs",
-      "changePercentage": -5.2,
-      "isPositive": false,
-    },
-    {
-      "title": "Net Income",
-      "value": "₱1,560.00",
-      "subtitle": "After all expenses",
-      "changePercentage": 15.7,
-      "isPositive": true,
-    },
-  ];
+  // Real data
+  List<Map<String, dynamic>> _metrics = [];
+  List<Map<String, dynamic>> _profitTrends = [];
+  List<Map<String, dynamic>> _topProducts = [];
+  List<Map<String, dynamic>> _expenseData = [];
+  List<Map<String, dynamic>> _insights = [];
 
-  final List<Map<String, dynamic>> _mockProfitTrends = [
-    {"label": "Mon", "value": 850.0},
-    {"label": "Tue", "value": 1200.0},
-    {"label": "Wed", "value": 980.0},
-    {"label": "Thu", "value": 1450.0},
-    {"label": "Fri", "value": 1680.0},
-    {"label": "Sat", "value": 2100.0},
-    {"label": "Sun", "value": 1890.0},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadAnalyticsData();
+  }
 
-  final List<Map<String, dynamic>> _mockTopProducts = [
-    {"name": "Coca Cola 1.5L", "quantity": 45.0},
-    {"name": "Lucky Me Instant Noodles", "quantity": 38.0},
-    {"name": "Bread Loaf", "quantity": 32.0},
-    {"name": "Rice 5kg", "quantity": 28.0},
-    {"name": "Cooking Oil 1L", "quantity": 25.0},
-  ];
+  Future<void> _loadAnalyticsData() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-  final List<Map<String, dynamic>> _mockExpenseData = [
-    {"category": "Inventory", "amount": 450.0},
-    {"category": "Utilities", "amount": 180.0},
-    {"category": "Transportation", "amount": 120.0},
-    {"category": "Maintenance", "amount": 90.0},
-    {"category": "Miscellaneous", "amount": 50.0},
-  ];
+    try {
+      await _loadRealAnalyticsData();
+      setState(() {
+        _isDemoMode = false;
+        _isLoading = false;
+      });
+    } catch (e) {
+      // Fallback to demo mode on error
+      setState(() {
+        _isDemoMode = true;
+        _isLoading = false;
+      });
+      _loadDemoAnalyticsData();
+    }
+  }
 
-  final List<Map<String, dynamic>> _mockInsights = [
-    {
-      "title": "Peak Sales Hour",
-      "description":
-          "Most sales happen between 5-7 PM. Consider stocking more during these hours.",
-      "iconName": "schedule",
-      "iconColor": Color(0xFF3498DB),
-    },
-    {
-      "title": "Low Stock Alert",
-      "description":
-          "5 products are running low. Restock soon to avoid lost sales.",
-      "iconName": "warning",
-      "iconColor": Color(0xFFF39C12),
-    },
-    {
-      "title": "Best Selling Category",
-      "description": "Beverages account for 35% of your total sales this week.",
-      "iconName": "local_drink",
-      "iconColor": Color(0xFF27AE60),
-    },
-    {
-      "title": "Profit Margin Trend",
-      "description":
-          "Your profit margin increased by 3.2% compared to last month.",
-      "iconName": "trending_up",
-      "iconColor": Color(0xFF27AE60),
-    },
-  ];
+  Future<void> _loadRealAnalyticsData() async {
+    final revenue =
+        await _analyticsService.getRevenueForPeriod(_selectedPeriod);
+    final profit = await _analyticsService.getProfitForPeriod(_selectedPeriod);
+    final expenses =
+        await _analyticsService.getExpensesForPeriod(_selectedPeriod);
+    final netIncome =
+        await _analyticsService.getNetIncomeForPeriod(_selectedPeriod);
+    final transactionCount =
+        await _analyticsService.getTransactionCountForPeriod(_selectedPeriod);
+    final profitMargin =
+        await _analyticsService.getProfitMarginForPeriod(_selectedPeriod);
+
+    final profitTrends =
+        await _analyticsService.getProfitTrendsForPeriod(_selectedPeriod);
+    final topProducts =
+        await _analyticsService.getTopProductsForPeriod(_selectedPeriod);
+    final expenseCategories =
+        await _analyticsService.getExpensesByCategoryForPeriod(_selectedPeriod);
+    final lowStockCount = await _analyticsService.getLowStockProductsCount();
+
+    setState(() {
+      _metrics = [
+        {
+          "title": "Today's Revenue",
+          "value": "₱${revenue.toStringAsFixed(2)}",
+          "subtitle": "From $transactionCount transactions",
+          "changePercentage": 0.0, // Would need previous period comparison
+          "isPositive": true,
+        },
+        {
+          "title": "Total Profit",
+          "value": "₱${profit.toStringAsFixed(2)}",
+          "subtitle": "${profitMargin.toStringAsFixed(1)}% margin",
+          "changePercentage": 0.0,
+          "isPositive": true,
+        },
+        {
+          "title": "Expenses",
+          "value": "₱${expenses.toStringAsFixed(2)}",
+          "subtitle": "Operational costs",
+          "changePercentage": 0.0,
+          "isPositive": false,
+        },
+        {
+          "title": "Net Income",
+          "value": "₱${netIncome.toStringAsFixed(2)}",
+          "subtitle": "After all expenses",
+          "changePercentage": 0.0,
+          "isPositive": netIncome >= 0,
+        },
+      ];
+
+      _profitTrends = profitTrends;
+      _topProducts = topProducts;
+
+      _expenseData = expenseCategories.entries
+          .map((entry) => {
+                "category": entry.key,
+                "amount": entry.value,
+              })
+          .toList();
+
+      _insights = [
+        {
+          "title": "Low Stock Alert",
+          "description":
+              "$lowStockCount products are running low. Restock soon to avoid lost sales.",
+          "iconName": "warning",
+          "iconColor": const Color(0xFFF39C12),
+        },
+        {
+          "title": "Profit Margin",
+          "description":
+              "Current profit margin is ${profitMargin.toStringAsFixed(1)}% for $_selectedPeriod.",
+          "iconName": "trending_up",
+          "iconColor": const Color(0xFF27AE60),
+        },
+        {
+          "title": "Top Performing Period",
+          "description":
+              "Analytics for $_selectedPeriod show ${transactionCount} transactions.",
+          "iconName": "bar_chart",
+          "iconColor": const Color(0xFF3498DB),
+        },
+      ];
+    });
+  }
+
+  void _loadDemoAnalyticsData() {
+    setState(() {
+      _metrics = [
+        {
+          "title": "Today's Revenue",
+          "value": "₱2,450.00",
+          "subtitle": "From 15 transactions",
+          "changePercentage": 12.5,
+          "isPositive": true,
+        },
+        {
+          "title": "Total Profit",
+          "value": "₱1,230.00",
+          "subtitle": "50.2% margin",
+          "changePercentage": 8.3,
+          "isPositive": true,
+        },
+        {
+          "title": "Expenses",
+          "value": "₱890.00",
+          "subtitle": "Operational costs",
+          "changePercentage": -5.2,
+          "isPositive": false,
+        },
+        {
+          "title": "Net Income",
+          "value": "₱1,560.00",
+          "subtitle": "After all expenses",
+          "changePercentage": 15.7,
+          "isPositive": true,
+        },
+      ];
+
+      _profitTrends = [
+        {"label": "Mon", "value": 850.0},
+        {"label": "Tue", "value": 1200.0},
+        {"label": "Wed", "value": 980.0},
+        {"label": "Thu", "value": 1450.0},
+        {"label": "Fri", "value": 1680.0},
+        {"label": "Sat", "value": 2100.0},
+        {"label": "Sun", "value": 1890.0},
+      ];
+
+      _topProducts = [
+        {"name": "Coca Cola 1.5L", "quantity": 45.0},
+        {"name": "Lucky Me Instant Noodles", "quantity": 38.0},
+        {"name": "Bread Loaf", "quantity": 32.0},
+        {"name": "Rice 5kg", "quantity": 28.0},
+        {"name": "Cooking Oil 1L", "quantity": 25.0},
+      ];
+
+      _expenseData = [
+        {"category": "Inventory", "amount": 450.0},
+        {"category": "Utilities", "amount": 180.0},
+        {"category": "Transportation", "amount": 120.0},
+        {"category": "Maintenance", "amount": 90.0},
+        {"category": "Miscellaneous", "amount": 50.0},
+      ];
+
+      _insights = [
+        {
+          "title": "Peak Sales Hour",
+          "description":
+              "Most sales happen between 5-7 PM. Consider stocking more during these hours.",
+          "iconName": "schedule",
+          "iconColor": const Color(0xFF3498DB),
+        },
+        {
+          "title": "Low Stock Alert",
+          "description":
+              "5 products are running low. Restock soon to avoid lost sales.",
+          "iconName": "warning",
+          "iconColor": const Color(0xFFF39C12),
+        },
+        {
+          "title": "Best Selling Category",
+          "description":
+              "Beverages account for 35% of your total sales this week.",
+          "iconName": "local_drink",
+          "iconColor": const Color(0xFF27AE60),
+        },
+        {
+          "title": "Profit Margin Trend",
+          "description":
+              "Your profit margin increased by 3.2% compared to last month.",
+          "iconName": "trending_up",
+          "iconColor": const Color(0xFF27AE60),
+        },
+      ];
+    });
+  }
+
+  void _switchToDemoMode() {
+    setState(() {
+      _isDemoMode = true;
+    });
+    _loadDemoAnalyticsData();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Switched to demo mode'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _switchToDatabaseMode() async {
+    await _loadAnalyticsData();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_isDemoMode
+            ? 'Still in demo mode (no data available)'
+            : 'Switched to database mode'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,11 +273,35 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     final brightness = theme.brightness;
     final isLight = brightness == Brightness.light;
 
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: Text(
+            'Analytics',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          backgroundColor: theme.colorScheme.surface,
+          foregroundColor: theme.colorScheme.onSurface,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+        bottomNavigationBar: CustomBottomBar(
+          currentIndex: 1,
+          onTap: _onBottomNavTap,
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Analytics',
+          'Analytics${_isDemoMode ? " (Demo)" : ""}',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w600,
             color: theme.colorScheme.onSurface,
@@ -132,6 +312,16 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         elevation: 0,
         centerTitle: true,
         actions: [
+          IconButton(
+            onPressed: _isDemoMode ? _switchToDatabaseMode : _switchToDemoMode,
+            icon: CustomIconWidget(
+              iconName: _isDemoMode ? 'database' : 'preview',
+              color: theme.colorScheme.onSurface,
+              size: 24,
+            ),
+            tooltip:
+                _isDemoMode ? 'Switch to Database Mode' : 'Switch to Demo Mode',
+          ),
           IconButton(
             onPressed: _showReportsScreen,
             icon: CustomIconWidget(
@@ -164,9 +354,9 @@ class _AnalyticsTabState extends State<AnalyticsTab>
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.symmetric(horizontal: 4.w),
-                  itemCount: _mockMetrics.length,
+                  itemCount: _metrics.length,
                   itemBuilder: (context, index) {
-                    final metric = _mockMetrics[index];
+                    final metric = _metrics[index];
                     return MetricCardWidget(
                       title: metric['title'] as String,
                       value: metric['value'] as String,
@@ -191,14 +381,14 @@ class _AnalyticsTabState extends State<AnalyticsTab>
             // Top Products Chart
             SliverToBoxAdapter(
               child: TopProductsChartWidget(
-                productData: _mockTopProducts,
+                productData: _topProducts,
               ),
             ),
 
             // Expense Breakdown Chart
             SliverToBoxAdapter(
               child: ExpenseBreakdownChartWidget(
-                expenseData: _mockExpenseData,
+                expenseData: _expenseData,
               ),
             ),
 
@@ -220,7 +410,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final insight = _mockInsights[index];
+                  final insight = _insights[index];
                   return InsightsCardWidget(
                     title: insight['title'] as String,
                     description: insight['description'] as String,
@@ -229,7 +419,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
                     onTap: () => _showInsightDetails(insight),
                   );
                 },
-                childCount: _mockInsights.length,
+                childCount: _insights.length,
               ),
             ),
 
@@ -263,17 +453,25 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     setState(() {
       _selectedPeriod = period;
     });
-    _refreshAnalytics();
+    if (!_isDemoMode) {
+      _loadRealAnalyticsData();
+    }
   }
 
   Future<void> _refreshAnalytics() async {
-    // Simulate data refresh
-    await Future.delayed(const Duration(milliseconds: 1500));
+    if (_isDemoMode) {
+      // Simulate refresh for demo mode
+      await Future.delayed(const Duration(milliseconds: 1500));
+    } else {
+      // Refresh real data
+      await _loadRealAnalyticsData();
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Analytics updated for $_selectedPeriod'),
+          content: Text(
+              'Analytics updated for $_selectedPeriod${_isDemoMode ? " (Demo)" : ""}'),
           duration: const Duration(seconds: 2),
           backgroundColor: const Color(0xFF27AE60),
         ),
@@ -282,34 +480,38 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   }
 
   List<Map<String, dynamic>> _getProfitTrendsForPeriod() {
-    switch (_selectedPeriod) {
-      case 'Today':
-        return [
-          {"label": "6AM", "value": 120.0},
-          {"label": "9AM", "value": 280.0},
-          {"label": "12PM", "value": 450.0},
-          {"label": "3PM", "value": 380.0},
-          {"label": "6PM", "value": 680.0},
-          {"label": "9PM", "value": 530.0},
-        ];
-      case 'Week':
-        return _mockProfitTrends;
-      case 'Month':
-        return [
-          {"label": "Week 1", "value": 8500.0},
-          {"label": "Week 2", "value": 9200.0},
-          {"label": "Week 3", "value": 7800.0},
-          {"label": "Week 4", "value": 10500.0},
-        ];
-      case 'Year':
-        return [
-          {"label": "Q1", "value": 35000.0},
-          {"label": "Q2", "value": 42000.0},
-          {"label": "Q3", "value": 38000.0},
-          {"label": "Q4", "value": 45000.0},
-        ];
-      default:
-        return _mockProfitTrends;
+    if (_isDemoMode) {
+      switch (_selectedPeriod) {
+        case 'Today':
+          return [
+            {"label": "6AM", "value": 120.0},
+            {"label": "9AM", "value": 280.0},
+            {"label": "12PM", "value": 450.0},
+            {"label": "3PM", "value": 380.0},
+            {"label": "6PM", "value": 680.0},
+            {"label": "9PM", "value": 530.0},
+          ];
+        case 'Week':
+          return _profitTrends;
+        case 'Month':
+          return [
+            {"label": "Week 1", "value": 8500.0},
+            {"label": "Week 2", "value": 9200.0},
+            {"label": "Week 3", "value": 7800.0},
+            {"label": "Week 4", "value": 10500.0},
+          ];
+        case 'Year':
+          return [
+            {"label": "Q1", "value": 35000.0},
+            {"label": "Q2", "value": 42000.0},
+            {"label": "Q3", "value": 38000.0},
+            {"label": "Q4", "value": 45000.0},
+          ];
+        default:
+          return _profitTrends;
+      }
+    } else {
+      return _profitTrends;
     }
   }
 

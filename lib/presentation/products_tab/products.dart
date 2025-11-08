@@ -213,6 +213,35 @@ class _ProductsTabState extends State<ProductsTab>
     _loadProducts();
   }
 
+  // Method to manually switch to demo mode
+  void _switchToDemoMode() {
+    setState(() {
+      _isDemoMode = true;
+      _isLoading = false;
+      _products = [];
+      _categories = [];
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Switched to demo mode'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // Method to switch back to database mode
+  void _switchToDatabaseMode() async {
+    await _loadProducts();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_isDemoMode
+            ? 'Still in demo mode (no products in database)'
+            : 'Switched to database mode'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -253,6 +282,13 @@ class _ProductsTabState extends State<ProductsTab>
         _isDemoMode = true;
         _isLoading = false;
       });
+    }
+  }
+
+  // Method to refresh products after purchase (called from checkout)
+  void _refreshProductsAfterPurchase() {
+    if (!_isDemoMode) {
+      _loadProducts();
     }
   }
 
@@ -308,14 +344,31 @@ class _ProductsTabState extends State<ProductsTab>
                     ),
                   ),
                   // Quick actions
-                  IconButton(
-                    onPressed: _refreshProducts,
-                    icon: CustomIconWidget(
-                      iconName: 'refresh',
-                      color: AppTheme.primaryLight,
-                      size: 24,
-                    ),
-                    tooltip: 'Refresh',
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: _isDemoMode
+                            ? _switchToDatabaseMode
+                            : _switchToDemoMode,
+                        icon: CustomIconWidget(
+                          iconName: _isDemoMode ? 'database' : 'preview',
+                          color: AppTheme.primaryLight,
+                          size: 24,
+                        ),
+                        tooltip: _isDemoMode
+                            ? 'Switch to Database Mode'
+                            : 'Switch to Demo Mode',
+                      ),
+                      IconButton(
+                        onPressed: _refreshProducts,
+                        icon: CustomIconWidget(
+                          iconName: 'refresh',
+                          color: AppTheme.primaryLight,
+                          size: 24,
+                        ),
+                        tooltip: 'Refresh',
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -688,7 +741,10 @@ class _ProductsTabState extends State<ProductsTab>
       context,
       '/checkout',
       arguments: product,
-    );
+    ).then((_) {
+      // Refresh products after returning from checkout (purchase completed)
+      _refreshProductsAfterPurchase();
+    });
   }
 
   void _editProduct(Map<String, dynamic> product) {

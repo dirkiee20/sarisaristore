@@ -25,13 +25,105 @@ class _StockManagementTabState extends State<StockManagementTab>
   String _sortBy = 'name';
   bool _isMultiSelectMode = false;
   bool _isLoading = true;
-  String? _errorMessage;
+  bool _isDemoMode = false;
   final Set<int> _selectedProducts = {};
   late AnimationController _fabAnimationController;
   late Animation<double> _fabAnimation;
   final ProductService _productService = ProductService();
 
   List<ProductModel> _products = [];
+
+  // Demo data for stock management
+  final List<Map<String, dynamic>> _demoStockData = [
+    {
+      "id": 1,
+      "name": "Coca-Cola 1.5L",
+      "category": "Beverages",
+      "currentStock": 0,
+      "reorderLevel": 10,
+      "price": 65.00,
+      "barcode": "4902430123456",
+      "lastUpdated": DateTime.now().subtract(const Duration(hours: 2)),
+      "supplier": "Coca-Cola Philippines",
+    },
+    {
+      "id": 2,
+      "name": "Lucky Me Pancit Canton",
+      "category": "Instant Noodles",
+      "currentStock": 5,
+      "reorderLevel": 20,
+      "price": 15.50,
+      "barcode": "4902430789012",
+      "lastUpdated": DateTime.now().subtract(const Duration(hours: 1)),
+      "supplier": "Monde Nissin",
+    },
+    {
+      "id": 3,
+      "name": "Tide Powder 1kg",
+      "category": "Household",
+      "currentStock": 25,
+      "reorderLevel": 15,
+      "price": 185.00,
+      "barcode": "4902430345678",
+      "lastUpdated": DateTime.now().subtract(const Duration(minutes: 30)),
+      "supplier": "Procter & Gamble",
+    },
+    {
+      "id": 4,
+      "name": "San Miguel Beer 330ml",
+      "category": "Beverages",
+      "currentStock": 8,
+      "reorderLevel": 12,
+      "price": 45.00,
+      "barcode": "4902430901234",
+      "lastUpdated": DateTime.now().subtract(const Duration(hours: 3)),
+      "supplier": "San Miguel Corporation",
+    },
+    {
+      "id": 5,
+      "name": "Maggi Magic Sarap 50g",
+      "category": "Seasonings",
+      "currentStock": 35,
+      "reorderLevel": 20,
+      "price": 28.75,
+      "barcode": "4902430567890",
+      "lastUpdated": DateTime.now().subtract(const Duration(minutes: 45)),
+      "supplier": "Nestle Philippines",
+    },
+    {
+      "id": 6,
+      "name": "Palmolive Shampoo 400ml",
+      "category": "Personal Care",
+      "currentStock": 3,
+      "reorderLevel": 10,
+      "price": 125.00,
+      "barcode": "4902430234567",
+      "lastUpdated": DateTime.now().subtract(const Duration(hours: 4)),
+      "supplier": "Colgate-Palmolive",
+    },
+    {
+      "id": 7,
+      "name": "Skyflakes Crackers",
+      "category": "Snacks",
+      "currentStock": 18,
+      "reorderLevel": 15,
+      "price": 32.50,
+      "barcode": "4902430678901",
+      "lastUpdated": DateTime.now().subtract(const Duration(hours: 2)),
+      "supplier": "Ricoa",
+    },
+    {
+      "id": 8,
+      "name": "Downy Fabric Conditioner 1L",
+      "category": "Household",
+      "currentStock": 12,
+      "reorderLevel": 8,
+      "price": 155.00,
+      "barcode": "4902430890123",
+      "lastUpdated": DateTime.now().subtract(const Duration(minutes: 15)),
+      "supplier": "Procter & Gamble",
+    },
+  ];
 
   @override
   void initState() {
@@ -56,21 +148,65 @@ class _StockManagementTabState extends State<StockManagementTab>
   Future<void> _loadProducts() async {
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
     });
 
     try {
       final products = await _productService.getAllProducts();
       setState(() {
         _products = products;
+        _isDemoMode = false;
         _isLoading = false;
       });
     } catch (e) {
+      // Fallback to demo mode on error
       setState(() {
-        _errorMessage = 'Failed to load products: $e';
+        _isDemoMode = true;
         _isLoading = false;
       });
+      _loadDemoProducts();
     }
+  }
+
+  void _loadDemoProducts() {
+    // Convert demo data to ProductModel format for consistency
+    _products = _demoStockData
+        .map((data) => ProductModel(
+              id: data['id'] as int,
+              name: data['name'] as String,
+              category: data['category'] as String,
+              barcode: data['barcode'] as String,
+              costPrice: 10.0, // Mock cost price
+              sellingPrice: data['price'] as double,
+              stock: data['currentStock'] as int,
+              createdAt: DateTime.now().subtract(const Duration(days: 30)),
+              updatedAt: data['lastUpdated'] as DateTime,
+            ))
+        .toList();
+  }
+
+  void _switchToDemoMode() {
+    setState(() {
+      _isDemoMode = true;
+    });
+    _loadDemoProducts();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Switched to demo mode'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _switchToDatabaseMode() async {
+    await _loadProducts();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_isDemoMode
+            ? 'Still in demo mode (no products in database)'
+            : 'Switched to database mode'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -115,90 +251,6 @@ class _StockManagementTabState extends State<StockManagementTab>
       );
     }
 
-    if (_errorMessage != null) {
-      return Scaffold(
-        backgroundColor: AppTheme.backgroundLight,
-        appBar: AppBar(
-          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-          title: Text(
-            'Stock Management',
-            style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimaryLight,
-            ),
-          ),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CustomIconWidget(
-                iconName: 'error_outline',
-                color: AppTheme.errorLight,
-                size: 80,
-              ),
-              SizedBox(height: 3.h),
-              Text(
-                'Failed to load products',
-                style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
-                  color: AppTheme.textSecondaryLight,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                _errorMessage!,
-                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.textDisabledLight,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 4.h),
-              ElevatedButton.icon(
-                onPressed: _loadProducts,
-                icon: CustomIconWidget(
-                  iconName: 'refresh',
-                  color: Colors.white,
-                  size: 20,
-                ),
-                label: Text(
-                  'Retry',
-                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryLight,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                ),
-              ),
-            ],
-          ),
-        ),
-        bottomNavigationBar: CustomBottomBar(
-          currentIndex: 2,
-          onTap: (index) {
-            switch (index) {
-              case 0:
-                Navigator.pushReplacementNamed(context, '/products-tab');
-                break;
-              case 1:
-                Navigator.pushReplacementNamed(context, '/analytics-tab');
-                break;
-              case 2:
-                // Already on Stock Management tab
-                break;
-            }
-          },
-        ),
-      );
-    }
-
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(
@@ -209,7 +261,7 @@ class _StockManagementTabState extends State<StockManagementTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Stock Management',
+              'Stock Management${_isDemoMode ? " (Demo)" : ""}',
               style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textPrimaryLight,
@@ -244,6 +296,18 @@ class _StockManagementTabState extends State<StockManagementTab>
               tooltip: 'Exit Selection',
             ),
           ] else ...[
+            IconButton(
+              onPressed:
+                  _isDemoMode ? _switchToDatabaseMode : _switchToDemoMode,
+              icon: CustomIconWidget(
+                iconName: _isDemoMode ? 'database' : 'preview',
+                color: AppTheme.textPrimaryLight,
+                size: 24,
+              ),
+              tooltip: _isDemoMode
+                  ? 'Switch to Database Mode'
+                  : 'Switch to Demo Mode',
+            ),
             IconButton(
               onPressed: () => _showNotificationSettings(context),
               icon: Stack(
@@ -549,6 +613,16 @@ class _StockManagementTabState extends State<StockManagementTab>
   }
 
   void _showStockAdjustmentModal(ProductModel product) {
+    if (_isDemoMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stock adjustments are disabled in demo mode'),
+          backgroundColor: AppTheme.warningLight,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -664,6 +738,17 @@ class _StockManagementTabState extends State<StockManagementTab>
 
   void _bulkStockUpdate() async {
     if (_selectedProducts.isEmpty) return;
+
+    if (_isDemoMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bulk stock updates are disabled in demo mode'),
+          backgroundColor: AppTheme.warningLight,
+        ),
+      );
+      _exitMultiSelectMode();
+      return;
+    }
 
     // Get selected products
     final selectedProducts =
