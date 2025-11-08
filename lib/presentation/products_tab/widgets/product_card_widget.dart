@@ -327,30 +327,6 @@ class ProductCardWidget extends StatelessWidget {
             ),
             ListTile(
               leading: CustomIconWidget(
-                iconName: 'analytics',
-                color: AppTheme.secondaryLight,
-                size: 24,
-              ),
-              title: const Text('View Analytics'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to analytics
-              },
-            ),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'content_copy',
-                color: AppTheme.textSecondaryLight,
-                size: 24,
-              ),
-              title: const Text('Duplicate Item'),
-              onTap: () {
-                Navigator.pop(context);
-                // Duplicate product logic
-              },
-            ),
-            ListTile(
-              leading: CustomIconWidget(
                 iconName: 'add_box',
                 color: AppTheme.successLight,
                 size: 24,

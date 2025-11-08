@@ -748,12 +748,27 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   void _editProduct(Map<String, dynamic> product) {
-    // Navigate to edit product screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Editing ${product["name"]}'),
-      ),
-    );
+    if (_isDemoMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot edit demo products'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Navigate to edit product screen (assuming route exists)
+    Navigator.pushNamed(
+      context,
+      '/edit-product',
+      arguments: product,
+    ).then((result) {
+      if (result == true) {
+        // Product was updated, refresh the list
+        _loadProducts();
+      }
+    });
   }
 
   void _deleteProduct(Map<String, dynamic> product) {
