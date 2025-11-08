@@ -4,6 +4,7 @@ import '../presentation/products_tab/products.dart';
 import '../presentation/add_product_screen/add_product_screen.dart';
 import '../presentation/stock_management_tab/stock_management_tab.dart';
 import '../presentation/analytics_tab/analytics_tab.dart';
+import '../presentation/checkout_screen/checkout_screen.dart';
 
 class AppRoutes {
   // TODO: Add your routes here
@@ -13,6 +14,7 @@ class AppRoutes {
   static const String addProduct = '/add-product-screen';
   static const String stockManagementTab = '/stock-management-tab';
   static const String analyticsTab = '/analytics-tab';
+  static const String checkout = '/checkout';
 
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
@@ -21,6 +23,10 @@ class AppRoutes {
     addProduct: (context) => const AddProductScreen(),
     stockManagementTab: (context) => const StockManagementTab(),
     analyticsTab: (context) => const AnalyticsTab(),
+    checkout: (context) {
+      final product = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      return CheckoutScreen(product: product);
+    },
     // TODO: Add your other routes here
   };
 }

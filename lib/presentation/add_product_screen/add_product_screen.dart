@@ -74,11 +74,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   void _onFormChanged() {
-    if (!_hasUnsavedChanges) {
-      setState(() {
-        _hasUnsavedChanges = true;
-      });
-    }
+    setState(() {
+      _hasUnsavedChanges = true;
+      // Rebuild to update button enabled state
+    });
   }
 
   bool _isFormValid() {

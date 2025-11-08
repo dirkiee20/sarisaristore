@@ -20,11 +20,32 @@ class StockQuantityPickerWidget extends StatefulWidget {
 }
 
 class _StockQuantityPickerWidgetState extends State<StockQuantityPickerWidget> {
+  @override
+  void initState() {
+    super.initState();
+    // Listen to controller changes to update UI
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    // Rebuild widget when controller text changes
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   void _incrementQuantity() {
     final currentValue = int.tryParse(widget.controller.text) ?? 0;
     final newValue = currentValue + 1;
     widget.controller.text = newValue.toString();
     HapticFeedback.lightImpact();
+    // setState is called via the controller listener
   }
 
   void _decrementQuantity() {
@@ -33,6 +54,7 @@ class _StockQuantityPickerWidgetState extends State<StockQuantityPickerWidget> {
       final newValue = currentValue - 1;
       widget.controller.text = newValue.toString();
       HapticFeedback.lightImpact();
+      // setState is called via the controller listener
     }
   }
 
@@ -43,84 +65,11 @@ class _StockQuantityPickerWidgetState extends State<StockQuantityPickerWidget> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(4.w),
-        height: 40.h,
-        child: Column(
-          children: [
-            Container(
-              width: 12.w,
-              height: 0.5.h,
-              decoration: BoxDecoration(
-                color: AppTheme.lightTheme.colorScheme.outline,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(height: 3.h),
-            Text(
-              'Set Stock Quantity',
-              style: AppTheme.lightTheme.textTheme.titleMedium,
-            ),
-            SizedBox(height: 4.h),
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildQuantityButton(
-                    icon: 'remove',
-                    onTap: _decrementQuantity,
-                    isEnabled: (int.tryParse(widget.controller.text) ?? 0) > 0,
-                  ),
-                  SizedBox(width: 8.w),
-                  Container(
-                    width: 30.w,
-                    child: TextFormField(
-                      controller: widget.controller,
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(4),
-                      ],
-                      style: AppTheme.lightTheme.textTheme.headlineMedium
-                          ?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        hintText: '0',
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  _buildQuantityButton(
-                    icon: 'add',
-                    onTap: _incrementQuantity,
-                    isEnabled: true,
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 2.h),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                SizedBox(width: 4.w),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Done'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+      builder: (context) => _QuantityPickerModal(
+        controller: widget.controller,
+        onIncrement: _incrementQuantity,
+        onDecrement: _decrementQuantity,
+        buildQuantityButton: _buildQuantityButton,
       ),
     );
   }
@@ -314,6 +263,130 @@ class _StockQuantityPickerWidgetState extends State<StockQuantityPickerWidget> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _QuantityPickerModal extends StatefulWidget {
+  final TextEditingController controller;
+  final VoidCallback onIncrement;
+  final VoidCallback onDecrement;
+  final Widget Function({
+    required String icon,
+    required VoidCallback onTap,
+    required bool isEnabled,
+  }) buildQuantityButton;
+
+  const _QuantityPickerModal({
+    required this.controller,
+    required this.onIncrement,
+    required this.onDecrement,
+    required this.buildQuantityButton,
+  });
+
+  @override
+  State<_QuantityPickerModal> createState() => _QuantityPickerModalState();
+}
+
+class _QuantityPickerModalState extends State<_QuantityPickerModal> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(4.w),
+      height: 40.h,
+      child: Column(
+        children: [
+          Container(
+            width: 12.w,
+            height: 0.5.h,
+            decoration: BoxDecoration(
+              color: AppTheme.lightTheme.colorScheme.outline,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(height: 3.h),
+          Text(
+            'Set Stock Quantity',
+            style: AppTheme.lightTheme.textTheme.titleMedium,
+          ),
+          SizedBox(height: 4.h),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                widget.buildQuantityButton(
+                  icon: 'remove',
+                  onTap: widget.onDecrement,
+                  isEnabled: (int.tryParse(widget.controller.text) ?? 0) > 0,
+                ),
+                SizedBox(width: 8.w),
+                Container(
+                  width: 30.w,
+                  child: TextFormField(
+                    controller: widget.controller,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '0',
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                widget.buildQuantityButton(
+                  icon: 'add',
+                  onTap: widget.onIncrement,
+                  isEnabled: true,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 2.h),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

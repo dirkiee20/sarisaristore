@@ -567,11 +567,11 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   void _navigateToProductDetails(Map<String, dynamic> product) {
-    // Navigate to product details screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Opening details for ${product["name"]}'),
-      ),
+    // Navigate to checkout screen with selected product
+    Navigator.pushNamed(
+      context,
+      '/checkout',
+      arguments: product,
     );
   }
 
