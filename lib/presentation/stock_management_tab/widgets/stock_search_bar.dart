@@ -9,6 +9,9 @@ class StockSearchBar extends StatefulWidget {
   final VoidCallback? onScanBarcode;
   final String sortBy;
   final ValueChanged<String> onSortChanged;
+  final VoidCallback? onBulkUpdate;
+  final VoidCallback? onExportReport;
+  final VoidCallback? onLowStockSettings;
 
   const StockSearchBar({
     super.key,
@@ -17,6 +20,9 @@ class StockSearchBar extends StatefulWidget {
     this.onScanBarcode,
     required this.sortBy,
     required this.onSortChanged,
+    this.onBulkUpdate,
+    this.onExportReport,
+    this.onLowStockSettings,
   });
 
   @override
@@ -294,7 +300,7 @@ class _StockSearchBarState extends State<StockSearchBar> {
               'edit',
               () {
                 Navigator.pop(context);
-                // Navigate to bulk update screen
+                widget.onBulkUpdate?.call();
               },
             ),
             _buildActionItem(
@@ -303,7 +309,7 @@ class _StockSearchBarState extends State<StockSearchBar> {
               'download',
               () {
                 Navigator.pop(context);
-                // Export functionality
+                widget.onExportReport?.call();
               },
             ),
             _buildActionItem(
@@ -312,7 +318,7 @@ class _StockSearchBarState extends State<StockSearchBar> {
               'notifications',
               () {
                 Navigator.pop(context);
-                // Navigate to settings
+                widget.onLowStockSettings?.call();
               },
             ),
             SizedBox(height: 2.h),

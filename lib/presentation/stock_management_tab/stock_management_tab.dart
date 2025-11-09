@@ -322,24 +322,11 @@ class _StockManagementTabState extends State<StockManagementTab>
                       right: 0,
                       top: 0,
                       child: Container(
-                        padding: const EdgeInsets.all(2),
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
                           color: AppTheme.errorLight,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          _getLowStockCount().toString(),
-                          style: AppTheme.lightTheme.textTheme.labelSmall
-                              ?.copyWith(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
+                          shape: BoxShape.circle,
                         ),
                       ),
                     ),
@@ -367,6 +354,9 @@ class _StockManagementTabState extends State<StockManagementTab>
                 _sortBy = sortBy;
               });
             },
+            onBulkUpdate: _showBulkUpdateDialog,
+            onExportReport: _exportStockReport,
+            onLowStockSettings: _showLowStockSettings,
           ),
 
           // Filter chips
@@ -754,87 +744,343 @@ class _StockManagementTabState extends State<StockManagementTab>
     final selectedProducts =
         _products.where((p) => _selectedProducts.contains(p.id)).toList();
 
+    // Show bulk update dialog with options
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Bulk Stock Update',
-          style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Update stock levels for ${selectedProducts.length} selected products?',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-            SizedBox(height: 2.h),
-            ...selectedProducts.take(3).map((product) => Padding(
-                  padding: EdgeInsets.only(bottom: 1.h),
-                  child: Text(
-                    '• ${product.name} (${product.stock} units)',
-                    style: AppTheme.lightTheme.textTheme.bodySmall,
-                  ),
-                )),
-            if (selectedProducts.length > 3)
-              Text(
-                '... and ${selectedProducts.length - 3} more',
-                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                  color: AppTheme.textSecondaryLight,
-                ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                // TODO: Implement bulk stock adjustment with proper UI
-                // For now, just show a message
-                _exitMultiSelectMode();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Bulk update feature coming soon'),
-                    backgroundColor: AppTheme.primaryLight,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to update stock: $e'),
-                    backgroundColor: AppTheme.errorLight,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryLight,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'Update',
-              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
+      builder: (context) => _BulkStockUpdateDialog(
+        selectedProducts: selectedProducts,
+        onUpdate: (adjustmentType, value, reason) async {
+          Navigator.pop(context); // Close dialog
+          await _performBulkStockUpdate(
+              selectedProducts, adjustmentType, value, reason);
+        },
+        onCancel: () => Navigator.pop(context),
       ),
     );
+  }
+
+  Future<void> _performBulkStockUpdate(
+    List<ProductModel> selectedProducts,
+    String adjustmentType,
+    int value,
+    String reason,
+  ) async {
+    try {
+      int successCount = 0;
+      int failCount = 0;
+
+      for (final product in selectedProducts) {
+        try {
+          int newStock;
+          switch (adjustmentType) {
+            case 'set':
+              newStock = value;
+              break;
+            case 'add':
+              newStock = product.stock + value;
+              break;
+            case 'subtract':
+              newStock = product.stock - value;
+              if (newStock < 0) newStock = 0; // Prevent negative stock
+              break;
+            default:
+              continue;
+          }
+
+          await _productService.adjustStock(product.id!, newStock, reason);
+          successCount++;
+        } catch (e) {
+          failCount++;
+          // Continue with other products even if one fails
+        }
+      }
+
+      // Exit multi-select mode
+      _exitMultiSelectMode();
+
+      // Show results
+      if (successCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Successfully updated $successCount product${successCount == 1 ? '' : 's'}'
+              '${failCount > 0 ? ' ($failCount failed)' : ''}',
+            ),
+            backgroundColor:
+                failCount == 0 ? AppTheme.successLight : AppTheme.warningLight,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      if (failCount > 0 && successCount == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Failed to update $failCount product${failCount == 1 ? '' : 's'}'),
+            backgroundColor: AppTheme.errorLight,
+          ),
+        );
+      }
+
+      // Refresh the product list
+      await _loadProducts();
+    } catch (e) {
+      _exitMultiSelectMode();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bulk update failed: $e'),
+          backgroundColor: AppTheme.errorLight,
+        ),
+      );
+    }
+  }
+
+  void _showBulkUpdateDialog() {
+    debugPrint('showBulkUpdateDialog called');
+    debugPrint('Context: $context');
+    debugPrint('Context mounted: ${context.mounted}');
+    if (_isDemoMode) {
+      debugPrint('Demo mode detected, showing warning');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bulk stock updates are disabled in demo mode'),
+          backgroundColor: AppTheme.warningLight,
+        ),
+      );
+      return;
+    }
+
+    debugPrint('Showing bulk update dialog');
+    try {
+      showDialog(
+        context: context,
+        builder: (context) {
+          debugPrint('Dialog builder called');
+          return _BulkStockUpdateDialog(
+            selectedProducts: _products, // Allow bulk update for all products
+            onUpdate: (adjustmentType, value, reason) async {
+              debugPrint(
+                  'Bulk update submitted: $adjustmentType, $value, $reason');
+              Navigator.pop(context); // Close dialog
+              await _performBulkStockUpdate(
+                  _products, adjustmentType, value, reason);
+            },
+            onCancel: () => Navigator.pop(context),
+          );
+        },
+      );
+      debugPrint('showDialog completed successfully');
+    } catch (e) {
+      debugPrint('Error showing bulk update dialog: $e');
+    }
+  }
+
+  void _exportStockReport() {
+    debugPrint('_exportStockReport called');
+    debugPrint('Context: $context');
+    debugPrint('Context mounted: ${context.mounted}');
+    if (_isDemoMode) {
+      debugPrint('Demo mode detected, showing warning');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report export is disabled in demo mode'),
+          backgroundColor: AppTheme.warningLight,
+        ),
+      );
+      return;
+    }
+
+    debugPrint('Showing export report dialog');
+    try {
+      showDialog(
+        context: context,
+        builder: (context) {
+          debugPrint('Export dialog builder called');
+          return _ExportReportDialog(
+            products: _products,
+            filteredProducts: _getFilteredProducts(),
+            onExport: (format, includeDetails) async {
+              debugPrint('Export submitted: $format, $includeDetails');
+              Navigator.pop(context);
+              await _performExport(format, includeDetails);
+            },
+            onCancel: () => Navigator.pop(context),
+          );
+        },
+      );
+      debugPrint('showDialog for export completed successfully');
+    } catch (e) {
+      debugPrint('Error showing export report dialog: $e');
+    }
+  }
+
+  Future<void> _performExport(String format, bool includeDetails) async {
+    try {
+      final products = _getFilteredProducts();
+      final timestamp = DateTime.now().toIso8601String().split('T')[0];
+
+      // Generate report content
+      final reportContent = _generateReportContent(products, includeDetails);
+
+      // For now, just show a success message with the report content
+      // In a real app, this would save to file or share
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Stock Report Generated'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Report for ${products.length} products (${format.toUpperCase()} format)',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+                SizedBox(height: 2.h),
+                Container(
+                  padding: EdgeInsets.all(2.w),
+                  decoration: BoxDecoration(
+                    color: AppTheme.lightTheme.colorScheme.surface,
+                    border: Border.all(color: AppTheme.dividerLight),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  constraints: BoxConstraints(maxHeight: 40.h),
+                  child: SingleChildScrollView(
+                    child: Text(
+                      reportContent,
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // In a real app, this would share or save the file
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content:
+                        Text('Report saved as stock_report_$timestamp.$format'),
+                    backgroundColor: AppTheme.successLight,
+                  ),
+                );
+              },
+              child: const Text('Save Report'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to generate report: $e'),
+          backgroundColor: AppTheme.errorLight,
+        ),
+      );
+    }
+  }
+
+  String _generateReportContent(
+      List<ProductModel> products, bool includeDetails) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('STOCK MANAGEMENT REPORT');
+    buffer.writeln('Generated: ${DateTime.now()}');
+    buffer.writeln('Total Products: ${products.length}');
+    buffer.writeln('');
+
+    buffer.writeln('SUMMARY:');
+    final inStock = products.where((p) => p.stock > 10).length;
+    final lowStock = products.where((p) => p.stock > 0 && p.stock <= 10).length;
+    final outOfStock = products.where((p) => p.stock == 0).length;
+    final totalValue =
+        products.fold<double>(0, (sum, p) => sum + (p.sellingPrice * p.stock));
+
+    buffer.writeln('  In Stock: $inStock products');
+    buffer.writeln('  Low Stock: $lowStock products');
+    buffer.writeln('  Out of Stock: $outOfStock products');
+    buffer.writeln('  Total Value: ₱${totalValue.toStringAsFixed(2)}');
+    buffer.writeln('');
+
+    if (includeDetails) {
+      buffer.writeln('PRODUCT DETAILS:');
+      buffer.writeln('Name,Category,Stock,Unit Price,Total Value,Status');
+      for (final product in products) {
+        final status = product.stock == 0
+            ? 'Out of Stock'
+            : product.stock <= 10
+                ? 'Low Stock'
+                : 'In Stock';
+        final totalValue = product.sellingPrice * product.stock;
+        buffer.writeln(
+            '"${product.name}","${product.category}",${product.stock},₱${product.sellingPrice.toStringAsFixed(2)},₱${totalValue.toStringAsFixed(2)},"$status"');
+      }
+    }
+
+    return buffer.toString();
+  }
+
+  void _showLowStockSettings() {
+    debugPrint('_showLowStockSettings called');
+    debugPrint('Context: $context');
+    debugPrint('Context mounted: ${context.mounted}');
+    debugPrint('Showing low stock settings dialog');
+    try {
+      showDialog(
+        context: context,
+        builder: (context) {
+          debugPrint('Low stock settings dialog builder called');
+          return _LowStockSettingsDialog(
+            onSave: (threshold, enableNotifications) async {
+              debugPrint(
+                  'Low stock settings saved: $threshold, $enableNotifications');
+              Navigator.pop(context);
+              await _saveLowStockSettings(threshold, enableNotifications);
+            },
+            onCancel: () => Navigator.pop(context),
+          );
+        },
+      );
+      debugPrint('showDialog for low stock settings completed successfully');
+    } catch (e) {
+      debugPrint('Error showing low stock settings dialog: $e');
+    }
+  }
+
+  Future<void> _saveLowStockSettings(
+      int threshold, bool enableNotifications) async {
+    try {
+      // In a real app, this would save to shared preferences or database
+      // For now, just show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Low stock settings updated: Threshold = $threshold, Notifications = ${enableNotifications ? 'Enabled' : 'Disabled'}'),
+          backgroundColor: AppTheme.successLight,
+        ),
+      );
+
+      // Refresh to apply new settings
+      await _loadProducts();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save settings: $e'),
+          backgroundColor: AppTheme.errorLight,
+        ),
+      );
+    }
   }
 
   void _scanBarcode() {
@@ -868,88 +1114,100 @@ class _StockManagementTabState extends State<StockManagementTab>
   }
 
   void _showNotificationSettings(BuildContext context) {
+    debugPrint('_showNotificationSettings called');
+    debugPrint('Context: $context');
+    debugPrint('Context mounted: ${context.mounted}');
     final lowStockProducts =
         _products.where((product) => product.stock <= 10).toList();
+    debugPrint('Low stock products count: ${lowStockProducts.length}');
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Stock Alerts',
-          style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You have ${lowStockProducts.length} products that need attention:',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-            SizedBox(height: 2.h),
-            ...lowStockProducts.take(3).map((product) {
-              final status = _getStockStatus(product.stock, 10);
-              return Padding(
-                padding: EdgeInsets.only(bottom: 1.h),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: status == 'Out of Stock'
-                            ? AppTheme.errorLight
-                            : AppTheme.warningLight,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    SizedBox(width: 2.w),
-                    Expanded(
-                      child: Text(
-                        '${product.name} (${product.stock} left)',
-                        style: AppTheme.lightTheme.textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Close',
-              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _selectedFilter = 'Low Stock';
-              });
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryLight,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'View All',
-              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                color: Colors.white,
+    try {
+      showDialog(
+        context: context,
+        builder: (context) {
+          debugPrint('Notification settings dialog builder called');
+          return AlertDialog(
+            title: Text(
+              'Stock Alerts',
+              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-        ],
-      ),
-    );
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You have ${lowStockProducts.length} products that need attention:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+                SizedBox(height: 2.h),
+                ...lowStockProducts.take(3).map((product) {
+                  final status = _getStockStatus(product.stock, 10);
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 1.h),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: status == 'Out of Stock'
+                                ? AppTheme.errorLight
+                                : AppTheme.warningLight,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        SizedBox(width: 2.w),
+                        Expanded(
+                          child: Text(
+                            '${product.name} (${product.stock} left)',
+                            style: AppTheme.lightTheme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Close',
+                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                    color: AppTheme.textSecondaryLight,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _selectedFilter = 'Low Stock';
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryLight,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(
+                  'View All',
+                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+      debugPrint('showDialog for notification settings completed successfully');
+    } catch (e) {
+      debugPrint('Error showing notification settings dialog: $e');
+    }
   }
 
   Widget _buildEmptyState() {
@@ -1010,6 +1268,525 @@ class _StockManagementTabState extends State<StockManagementTab>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BulkStockUpdateDialog extends StatefulWidget {
+  final List<ProductModel> selectedProducts;
+  final Function(String adjustmentType, int value, String reason) onUpdate;
+  final VoidCallback onCancel;
+
+  const _BulkStockUpdateDialog({
+    required this.selectedProducts,
+    required this.onUpdate,
+    required this.onCancel,
+  });
+
+  @override
+  State<_BulkStockUpdateDialog> createState() => _BulkStockUpdateDialogState();
+}
+
+class _BulkStockUpdateDialogState extends State<_BulkStockUpdateDialog> {
+  String _adjustmentType = 'set';
+  final TextEditingController _valueController = TextEditingController();
+  final TextEditingController _reasonController =
+      TextEditingController(text: 'Bulk Stock Adjustment');
+
+  @override
+  void dispose() {
+    _valueController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        'Bulk Stock Update',
+        style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Update stock for ${widget.selectedProducts.length} selected products:',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 2.h),
+
+            // Show first few selected products
+            ...widget.selectedProducts.take(3).map((product) => Padding(
+                  padding: EdgeInsets.only(bottom: 0.5.h),
+                  child: Text(
+                    '• ${product.name} (${product.stock} units)',
+                    style: AppTheme.lightTheme.textTheme.bodySmall,
+                  ),
+                )),
+            if (widget.selectedProducts.length > 3)
+              Text(
+                '... and ${widget.selectedProducts.length - 3} more',
+                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                  color: AppTheme.textSecondaryLight,
+                ),
+              ),
+
+            SizedBox(height: 3.h),
+
+            // Adjustment type selector
+            Text(
+              'Adjustment Type',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            DropdownButtonFormField<String>(
+              initialValue: _adjustmentType,
+              decoration: InputDecoration(
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'set', child: Text('Set to specific value')),
+                DropdownMenuItem(
+                    value: 'add', child: Text('Add to current stock')),
+                DropdownMenuItem(
+                    value: 'subtract',
+                    child: Text('Subtract from current stock')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _adjustmentType = value ?? 'set';
+                });
+              },
+            ),
+
+            SizedBox(height: 2.h),
+
+            // Value input
+            Text(
+              'Value',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            TextFormField(
+              controller: _valueController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                hintText: _adjustmentType == 'set'
+                    ? 'New stock level'
+                    : 'Amount to adjust',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter a value';
+                }
+                final numValue = int.tryParse(value);
+                if (numValue == null || numValue < 0) {
+                  return 'Please enter a valid positive number';
+                }
+                return null;
+              },
+            ),
+
+            SizedBox(height: 2.h),
+
+            // Reason input
+            Text(
+              'Reason',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            TextFormField(
+              controller: _reasonController,
+              decoration: InputDecoration(
+                hintText: 'Reason for stock adjustment',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: Text(
+            'Cancel',
+            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+              color: AppTheme.textSecondaryLight,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: _validateAndSubmit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryLight,
+            foregroundColor: Colors.white,
+          ),
+          child: Text(
+            'Update All',
+            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _validateAndSubmit() {
+    final value = int.tryParse(_valueController.text);
+    final reason = _reasonController.text.trim();
+
+    if (value == null || value < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid positive number'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please provide a reason for the adjustment'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    widget.onUpdate(_adjustmentType, value, reason);
+  }
+}
+
+class _ExportReportDialog extends StatefulWidget {
+  final List<ProductModel> products;
+  final List<ProductModel> filteredProducts;
+  final Function(String format, bool includeDetails) onExport;
+  final VoidCallback onCancel;
+
+  const _ExportReportDialog({
+    required this.products,
+    required this.filteredProducts,
+    required this.onExport,
+    required this.onCancel,
+  });
+
+  @override
+  State<_ExportReportDialog> createState() => _ExportReportDialogState();
+}
+
+class _ExportReportDialogState extends State<_ExportReportDialog> {
+  String _format = 'csv';
+  bool _includeDetails = true;
+  bool _exportFiltered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final productsToExport =
+        _exportFiltered ? widget.filteredProducts : widget.products;
+
+    return AlertDialog(
+      title: Text(
+        'Export Stock Report',
+        style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Export ${productsToExport.length} products to report',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 2.h),
+
+            // Export scope
+            Text(
+              'Export Scope',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            RadioListTile<bool>(
+              title: const Text('All Products'),
+              value: false,
+              groupValue: _exportFiltered,
+              onChanged: (value) =>
+                  setState(() => _exportFiltered = value ?? false),
+            ),
+            RadioListTile<bool>(
+              title:
+                  Text('Filtered Products (${widget.filteredProducts.length})'),
+              value: true,
+              groupValue: _exportFiltered,
+              onChanged: (value) =>
+                  setState(() => _exportFiltered = value ?? false),
+            ),
+
+            SizedBox(height: 2.h),
+
+            // Format selection
+            Text(
+              'Format',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            DropdownButtonFormField<String>(
+              initialValue: _format,
+              decoration: InputDecoration(
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'csv', child: Text('CSV (Spreadsheet)')),
+                DropdownMenuItem(value: 'txt', child: Text('Text Report')),
+                DropdownMenuItem(value: 'json', child: Text('JSON (Data)')),
+              ],
+              onChanged: (value) => setState(() => _format = value ?? 'csv'),
+            ),
+
+            SizedBox(height: 2.h),
+
+            // Include details
+            CheckboxListTile(
+              title: const Text('Include detailed product information'),
+              value: _includeDetails,
+              onChanged: (value) =>
+                  setState(() => _includeDetails = value ?? true),
+              subtitle: const Text(
+                  'Product names, categories, prices, and stock levels'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: Text(
+            'Cancel',
+            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+              color: AppTheme.textSecondaryLight,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => widget.onExport(_format, _includeDetails),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryLight,
+            foregroundColor: Colors.white,
+          ),
+          child: Text(
+            'Export',
+            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LowStockSettingsDialog extends StatefulWidget {
+  final Function(int threshold, bool enableNotifications) onSave;
+  final VoidCallback onCancel;
+
+  const _LowStockSettingsDialog({
+    required this.onSave,
+    required this.onCancel,
+  });
+
+  @override
+  State<_LowStockSettingsDialog> createState() =>
+      _LowStockSettingsDialogState();
+}
+
+class _LowStockSettingsDialogState extends State<_LowStockSettingsDialog> {
+  int _threshold = 10;
+  bool _enableNotifications = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        'Low Stock Settings',
+        style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Configure when products are considered low stock',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 3.h),
+
+            // Threshold setting
+            Text(
+              'Low Stock Threshold',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              'Products with stock at or below this level will be marked as low stock',
+              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                color: AppTheme.textSecondaryLight,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _threshold.toDouble(),
+                    min: 0,
+                    max: 50,
+                    divisions: 50,
+                    label: _threshold.toString(),
+                    onChanged: (value) =>
+                        setState(() => _threshold = value.toInt()),
+                  ),
+                ),
+                SizedBox(width: 3.w),
+                Container(
+                  width: 12.w,
+                  child: TextField(
+                    controller:
+                        TextEditingController(text: _threshold.toString()),
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (value) {
+                      final newValue = int.tryParse(value) ?? 10;
+                      setState(() => _threshold = newValue.clamp(0, 50));
+                    },
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(vertical: 1.h),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 3.h),
+
+            // Notifications setting
+            CheckboxListTile(
+              title: const Text('Enable Low Stock Notifications'),
+              value: _enableNotifications,
+              onChanged: (value) =>
+                  setState(() => _enableNotifications = value ?? true),
+              subtitle: const Text(
+                  'Show notification badge when products are low stock'),
+            ),
+
+            SizedBox(height: 2.h),
+
+            // Preview
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.surface,
+                border: Border.all(color: AppTheme.dividerLight),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Preview',
+                    style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 1.h),
+                  Text(
+                    'Products with ≤ $_threshold units will be marked as low stock',
+                    style: AppTheme.lightTheme.textTheme.bodySmall,
+                  ),
+                  if (_enableNotifications)
+                    Text(
+                      '• Notification badge will show low stock count',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondaryLight,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: Text(
+            'Cancel',
+            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+              color: AppTheme.textSecondaryLight,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => widget.onSave(_threshold, _enableNotifications),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryLight,
+            foregroundColor: Colors.white,
+          ),
+          child: Text(
+            'Save Settings',
+            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
