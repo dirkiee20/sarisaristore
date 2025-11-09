@@ -6,6 +6,8 @@ import '../../core/app_export.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import '../../data/models/product_model.dart';
 import '../../services/product_service.dart';
+import '../../services/file_service.dart';
+import '../../services/barcode_scanner_service.dart';
 import './widgets/stock_adjustment_modal.dart';
 import './widgets/stock_filter_chips.dart';
 import './widgets/stock_item_card.dart';
@@ -919,68 +921,84 @@ class _StockManagementTabState extends State<StockManagementTab>
     try {
       final products = _getFilteredProducts();
       final timestamp = DateTime.now().toIso8601String().split('T')[0];
+      final fileName = 'stock_report_$timestamp';
 
       // Generate report content
       final reportContent = _generateReportContent(products, includeDetails);
 
-      // For now, just show a success message with the report content
-      // In a real app, this would save to file or share
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Stock Report Generated'),
-          content: SingleChildScrollView(
-            child: Column(
+      // Save the file
+      final filePath = await FileService.saveReportToFile(
+        reportContent,
+        fileName,
+        format,
+      );
+
+      if (filePath != null) {
+        // Show success dialog with options to share or close
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Report Saved Successfully'),
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  'Report saved to: $filePath',
+                  style: AppTheme.lightTheme.textTheme.bodySmall,
+                ),
+                SizedBox(height: 2.h),
+                Text(
                   'Report for ${products.length} products (${format.toUpperCase()} format)',
                   style: AppTheme.lightTheme.textTheme.bodyMedium,
                 ),
-                SizedBox(height: 2.h),
-                Container(
-                  padding: EdgeInsets.all(2.w),
-                  decoration: BoxDecoration(
-                    color: AppTheme.lightTheme.colorScheme.surface,
-                    border: Border.all(color: AppTheme.dividerLight),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  constraints: BoxConstraints(maxHeight: 40.h),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      reportContent,
-                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  try {
+                    await FileService.shareFile(
+                      filePath,
+                      'Stock Report - $timestamp',
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to share report: $e'),
+                        backgroundColor: AppTheme.errorLight,
+                      ),
+                    );
+                  }
+                },
+                icon: CustomIconWidget(
+                  iconName: 'share',
+                  color: Colors.white,
+                  size: 20,
+                ),
+                label: const Text('Share Report'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryLight,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                // In a real app, this would share or save the file
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content:
-                        Text('Report saved as stock_report_$timestamp.$format'),
-                    backgroundColor: AppTheme.successLight,
-                  ),
-                );
-              },
-              child: const Text('Save Report'),
-            ),
-          ],
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Failed to save report. Please check storage permissions.'),
+            backgroundColor: AppTheme.errorLight,
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1083,14 +1101,87 @@ class _StockManagementTabState extends State<StockManagementTab>
     }
   }
 
-  void _scanBarcode() {
-    // Mock barcode scanning functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Barcode scanner feature coming soon'),
-        backgroundColor: AppTheme.primaryLight,
-      ),
-    );
+  void _scanBarcode() async {
+    try {
+      final barcodeScanner = BarcodeScannerService();
+      final scannedBarcode = await barcodeScanner.scanBarcode(context);
+
+      if (scannedBarcode != null) {
+        // Validate barcode
+        if (barcodeScanner.isValidBarcode(scannedBarcode)) {
+          // Search for product with this barcode
+          final matchingProduct = _products.firstWhere(
+            (product) => product.barcode == scannedBarcode,
+            orElse: () => ProductModel(
+              id: -1,
+              name: '',
+              category: '',
+              barcode: '',
+              costPrice: 0.0,
+              sellingPrice: 0.0,
+              stock: 0,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+          );
+
+          if (matchingProduct.id != -1) {
+            // Product found - show product details
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Found product: ${matchingProduct.name}'),
+                backgroundColor: AppTheme.successLight,
+                action: SnackBarAction(
+                  label: 'View',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // Could navigate to product details or highlight the product
+                    setState(() {
+                      _searchQuery = scannedBarcode;
+                    });
+                  },
+                ),
+              ),
+            );
+          } else {
+            // Product not found - offer to add new product
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Product not found for barcode: $scannedBarcode'),
+                backgroundColor: AppTheme.warningLight,
+                action: SnackBarAction(
+                  label: 'Add Product',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // Navigate to add product screen with pre-filled barcode
+                    Navigator.pushNamed(
+                      context,
+                      '/add-product-screen',
+                      arguments: {'barcode': scannedBarcode},
+                    );
+                  },
+                ),
+              ),
+            );
+          }
+        } else {
+          // Invalid barcode format
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Invalid barcode format: $scannedBarcode'),
+              backgroundColor: AppTheme.errorLight,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to scan barcode: $e'),
+          backgroundColor: AppTheme.errorLight,
+        ),
+      );
+    }
   }
 
   Future<void> _refreshStockData() async {

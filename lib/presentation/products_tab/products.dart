@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../data/models/product_model.dart';
 import '../../services/product_service.dart';
+import '../../services/barcode_scanner_service.dart';
 import './widgets/empty_state_widget.dart';
 import './widgets/filter_chips_widget.dart';
 import './widgets/product_card_widget.dart';
@@ -574,66 +575,78 @@ class _ProductsTabState extends State<ProductsTab>
     }
   }
 
-  void _showBarcodeScanner() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(4.w),
-        height: 30.h,
-        child: Column(
-          children: [
-            Container(
-              width: 12.w,
-              height: 0.5.h,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+  void _showBarcodeScanner() async {
+    try {
+      final barcodeScanner = BarcodeScannerService();
+      final scannedBarcode = await barcodeScanner.scanBarcode(context);
+
+      if (scannedBarcode != null) {
+        // Validate barcode
+        if (barcodeScanner.isValidBarcode(scannedBarcode)) {
+          // Search for product with this barcode
+          final matchingProduct = _filteredProducts.firstWhere(
+            (product) => product["barcode"] == scannedBarcode,
+            orElse: () => <String, dynamic>{},
+          );
+
+          if (matchingProduct.isNotEmpty) {
+            // Product found - show product details
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Found product: ${matchingProduct["name"]}'),
+                backgroundColor: AppTheme.successLight,
+                action: SnackBarAction(
+                  label: 'View',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // Could navigate to product details or highlight the product
+                    setState(() {
+                      _searchQuery = scannedBarcode;
+                      _searchController.text = scannedBarcode;
+                    });
+                  },
+                ),
               ),
-            ),
-            SizedBox(height: 3.h),
-            CustomIconWidget(
-              iconName: 'qr_code_scanner',
-              color: AppTheme.primaryLight,
-              size: 48,
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              'Barcode Scanner',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-            SizedBox(height: 1.h),
-            Text(
-              'Scan product barcodes to quickly find or add items',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textSecondaryLight,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 3.h),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Implement barcode scanning
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Barcode scanner feature coming soon'),
-                    ),
-                  );
-                },
-                child: const Text('Start Scanning'),
+            );
+          } else {
+            // Product not found - offer to add new product
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Product not found for barcode: $scannedBarcode'),
+                backgroundColor: AppTheme.warningLight,
+                action: SnackBarAction(
+                  label: 'Add Product',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // Navigate to add product screen with pre-filled barcode
+                    Navigator.pushNamed(
+                      context,
+                      '/add-product-screen',
+                      arguments: {'barcode': scannedBarcode},
+                    );
+                  },
+                ),
               ),
+            );
+          }
+        } else {
+          // Invalid barcode format
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Invalid barcode format: $scannedBarcode'),
+              backgroundColor: AppTheme.errorLight,
             ),
-          ],
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to scan barcode: $e'),
+          backgroundColor: AppTheme.errorLight,
         ),
-      ),
-    );
+      );
+    }
   }
 
   void _showFilterOptions() {

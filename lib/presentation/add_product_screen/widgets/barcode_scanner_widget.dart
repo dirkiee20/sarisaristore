@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/barcode_scanner_service.dart';
 
 class BarcodeScannerWidget extends StatefulWidget {
   final TextEditingController controller;
@@ -22,52 +23,45 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
   bool _isScanning = false;
 
   Future<void> _scanBarcode() async {
-    setState(() {
-      _isScanning = true;
-    });
-
     try {
-      // Simulate barcode scanning with mock data for demonstration
-      await Future.delayed(const Duration(seconds: 2));
+      final barcodeScanner = BarcodeScannerService();
+      final scannedBarcode = await barcodeScanner.scanBarcode(context);
 
-      // Mock barcode result - in real implementation, use flutter_barcode_scanner
-      final mockBarcodes = [
-        '1234567890123',
-        '9876543210987',
-        '5555666677778',
-        '1111222233334',
-        '9999888877776',
-      ];
+      if (scannedBarcode != null) {
+        // Validate barcode
+        if (barcodeScanner.isValidBarcode(scannedBarcode)) {
+          widget.controller.text = scannedBarcode;
 
-      final randomBarcode =
-          mockBarcodes[DateTime.now().millisecond % mockBarcodes.length];
-
-      widget.controller.text = randomBarcode;
-
-      if (mounted) {
-        HapticFeedback.lightImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Barcode scanned: $randomBarcode'),
-            duration: const Duration(seconds: 2),
-            backgroundColor: AppTheme.lightTheme.colorScheme.primary,
-          ),
-        );
+          if (mounted) {
+            HapticFeedback.lightImpact();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Barcode scanned: $scannedBarcode'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: AppTheme.successLight,
+              ),
+            );
+          }
+        } else {
+          // Invalid barcode format
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Invalid barcode format: $scannedBarcode'),
+                backgroundColor: AppTheme.errorLight,
+              ),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to scan barcode'),
-            backgroundColor: Colors.red,
+          SnackBar(
+            content: Text('Failed to scan barcode: $e'),
+            backgroundColor: AppTheme.errorLight,
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isScanning = false;
-        });
       }
     }
   }
