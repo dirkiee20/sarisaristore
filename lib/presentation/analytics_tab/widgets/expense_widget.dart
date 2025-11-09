@@ -52,7 +52,7 @@ class _ExpenseBreakdownChartWidgetState
             children: [
               Flexible(
                 child: Text(
-                  'Expense Breakdown',
+                  'Product Cost Breakdown',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: theme.colorScheme.onSurface,
@@ -98,20 +98,20 @@ class _ExpenseBreakdownChartWidgetState
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CustomIconWidget(
-            iconName: 'account_balance_wallet',
+            iconName: 'shopping_cart',
             color: const Color(0xFF95A5A6),
             size: 48,
           ),
           SizedBox(height: 2.h),
           Text(
-            'No expense data available',
+            'No product cost data available',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: const Color(0xFF95A5A6),
             ),
           ),
           SizedBox(height: 1.h),
           Text(
-            'Track expenses to see breakdown',
+            'Make sales to see cost breakdown',
             style: theme.textTheme.bodySmall?.copyWith(
               color: const Color(0xFF95A5A6),
             ),
@@ -123,7 +123,7 @@ class _ExpenseBreakdownChartWidgetState
 
   Widget _buildChart(ThemeData theme) {
     return Semantics(
-      label: "Pie chart showing expense breakdown by category",
+      label: "Pie chart showing product cost breakdown by category",
       child: PieChart(
         PieChartData(
           pieTouchData: PieTouchData(

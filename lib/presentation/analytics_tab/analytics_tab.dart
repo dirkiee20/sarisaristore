@@ -5,7 +5,6 @@ import '../../core/app_export.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import '../../widgets/custom_icon_widget.dart';
 import '../../services/analytics_service.dart';
-import '../../services/demo_mode_service.dart';
 import '../../services/file_service.dart';
 import '../../services/product_service.dart';
 import './widgets/expense_widget.dart';
@@ -27,7 +26,6 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   String _selectedPeriod = 'Today';
   final List<String> _periods = ['Today', 'Week', 'Month', 'Year'];
   final AnalyticsService _analyticsService = AnalyticsService();
-  final DemoModeService _demoModeService = DemoModeService();
   bool _isLoading = true;
 
   // Real data
@@ -40,18 +38,6 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   @override
   void initState() {
     super.initState();
-    _demoModeService.addListener(_onDemoModeChanged);
-    _loadAnalyticsData();
-  }
-
-  @override
-  void dispose() {
-    _demoModeService.removeListener(_onDemoModeChanged);
-    super.dispose();
-  }
-
-  void _onDemoModeChanged() {
-    // Reload data when demo mode changes
     _loadAnalyticsData();
   }
 
@@ -61,25 +47,23 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     });
 
     try {
-      if (_demoModeService.isDemoMode) {
-        // Use demo data
-        _loadDemoAnalyticsData();
-        setState(() {
-          _isLoading = false;
-        });
-      } else {
-        await _loadRealAnalyticsData();
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      // Fallback to demo mode on error
-      _demoModeService.setDemoMode(true);
-      _loadDemoAnalyticsData();
+      await _loadRealAnalyticsData();
       setState(() {
         _isLoading = false;
       });
+    } catch (e) {
+      // Show error message
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load analytics data: $e'),
+            backgroundColor: const Color(0xFFE74C3C),
+          ),
+        );
+      }
     }
   }
 
@@ -172,106 +156,6 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     });
   }
 
-  void _loadDemoAnalyticsData() {
-    setState(() {
-      _metrics = [
-        {
-          "title": "Today's Revenue",
-          "value": "₱2,450.00",
-          "subtitle": "From 15 transactions",
-          "changePercentage": 12.5,
-          "isPositive": true,
-        },
-        {
-          "title": "Total Profit",
-          "value": "₱1,230.00",
-          "subtitle": "50.2% margin",
-          "changePercentage": 8.3,
-          "isPositive": true,
-        },
-        {
-          "title": "Expenses",
-          "value": "₱890.00",
-          "subtitle": "Operational costs",
-          "changePercentage": -5.2,
-          "isPositive": false,
-        },
-        {
-          "title": "Net Income",
-          "value": "₱1,560.00",
-          "subtitle": "After all expenses",
-          "changePercentage": 15.7,
-          "isPositive": true,
-        },
-      ];
-
-      _profitTrends = [
-        {"label": "Mon", "value": 850.0},
-        {"label": "Tue", "value": 1200.0},
-        {"label": "Wed", "value": 980.0},
-        {"label": "Thu", "value": 1450.0},
-        {"label": "Fri", "value": 1680.0},
-        {"label": "Sat", "value": 2100.0},
-        {"label": "Sun", "value": 1890.0},
-      ];
-
-      _topProducts = [
-        {"name": "Coca Cola 1.5L", "quantity": 45.0},
-        {"name": "Lucky Me Instant Noodles", "quantity": 38.0},
-        {"name": "Bread Loaf", "quantity": 32.0},
-        {"name": "Rice 5kg", "quantity": 28.0},
-        {"name": "Cooking Oil 1L", "quantity": 25.0},
-      ];
-
-      _expenseData = [
-        {"category": "Inventory", "amount": 450.0},
-        {"category": "Utilities", "amount": 180.0},
-        {"category": "Transportation", "amount": 120.0},
-        {"category": "Maintenance", "amount": 90.0},
-        {"category": "Miscellaneous", "amount": 50.0},
-      ];
-
-      _insights = [
-        {
-          "title": "Peak Sales Hour",
-          "description":
-              "Most sales happen between 5-7 PM. Consider stocking more during these hours.",
-          "iconName": "schedule",
-          "iconColor": const Color(0xFF3498DB),
-        },
-        {
-          "title": "Low Stock Alert",
-          "description":
-              "5 products are running low. Restock soon to avoid lost sales.",
-          "iconName": "warning",
-          "iconColor": const Color(0xFFF39C12),
-        },
-        {
-          "title": "Best Selling Category",
-          "description":
-              "Beverages account for 35% of your total sales this week.",
-          "iconName": "local_drink",
-          "iconColor": const Color(0xFF27AE60),
-        },
-        {
-          "title": "Profit Margin Trend",
-          "description":
-              "Your profit margin increased by 3.2% compared to last month.",
-          "iconName": "trending_up",
-          "iconColor": const Color(0xFF27AE60),
-        },
-      ];
-    });
-  }
-
-  void _switchToDemoMode() {
-    _demoModeService.setDemoMode(true);
-  }
-
-  void _switchToDatabaseMode() async {
-    _demoModeService.setDemoMode(false);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -297,7 +181,6 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         body: const Center(child: CircularProgressIndicator()),
         bottomNavigationBar: CustomBottomBar(
           currentIndex: 1,
-          showDemoToggle: true,
           onTap: _onBottomNavTap,
         ),
       );
@@ -307,7 +190,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Analytics${_demoModeService.isDemoMode ? " (Demo)" : ""}',
+          'Analytics',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w600,
             color: theme.colorScheme.onSurface,
@@ -449,25 +332,17 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     setState(() {
       _selectedPeriod = period;
     });
-    if (!_demoModeService.isDemoMode) {
-      _loadRealAnalyticsData();
-    }
+    _loadRealAnalyticsData();
   }
 
   Future<void> _refreshAnalytics() async {
-    if (_demoModeService.isDemoMode) {
-      // Simulate refresh for demo mode
-      await Future.delayed(const Duration(milliseconds: 1500));
-    } else {
-      // Refresh real data
-      await _loadRealAnalyticsData();
-    }
+    // Refresh real data
+    await _loadRealAnalyticsData();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-              'Analytics updated for $_selectedPeriod${_demoModeService.isDemoMode ? " (Demo)" : ""}'),
+          content: Text('Analytics updated for $_selectedPeriod'),
           duration: const Duration(seconds: 2),
           backgroundColor: const Color(0xFF27AE60),
         ),
@@ -476,39 +351,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   }
 
   List<Map<String, dynamic>> _getProfitTrendsForPeriod() {
-    if (_demoModeService.isDemoMode) {
-      switch (_selectedPeriod) {
-        case 'Today':
-          return [
-            {"label": "6AM", "value": 120.0},
-            {"label": "9AM", "value": 280.0},
-            {"label": "12PM", "value": 450.0},
-            {"label": "3PM", "value": 380.0},
-            {"label": "6PM", "value": 680.0},
-            {"label": "9PM", "value": 530.0},
-          ];
-        case 'Week':
-          return _profitTrends;
-        case 'Month':
-          return [
-            {"label": "Week 1", "value": 8500.0},
-            {"label": "Week 2", "value": 9200.0},
-            {"label": "Week 3", "value": 7800.0},
-            {"label": "Week 4", "value": 10500.0},
-          ];
-        case 'Year':
-          return [
-            {"label": "Q1", "value": 35000.0},
-            {"label": "Q2", "value": 42000.0},
-            {"label": "Q3", "value": 38000.0},
-            {"label": "Q4", "value": 45000.0},
-          ];
-        default:
-          return _profitTrends;
-      }
-    } else {
-      return _profitTrends;
-    }
+    return _profitTrends;
   }
 
   void _onBottomNavTap(int index) {
@@ -704,6 +547,12 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       );
 
       if (filePath != null) {
+        // Determine where the file was saved
+        final isAppPrivate = filePath.contains('app_flutter');
+        final locationMessage = isAppPrivate
+            ? ' (saved in app storage)'
+            : ' (saved in Downloads folder)';
+
         // Show success message with share option
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -716,7 +565,8 @@ class _AnalyticsTabState extends State<AnalyticsTab>
                 ),
                 SizedBox(width: 3.w),
                 Expanded(
-                  child: Text('$reportType report saved successfully!'),
+                  child: Text(
+                      '$reportType report saved successfully!$locationMessage'),
                 ),
               ],
             ),

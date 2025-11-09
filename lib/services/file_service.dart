@@ -1,33 +1,72 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 /// Service for handling file operations like saving and sharing reports
 class FileService {
+  /// Check if device supports scoped storage (Android 10+)
+  static Future<bool> _supportsScopedStorage() async {
+    if (!Platform.isAndroid) return false;
+
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    return androidInfo.version.sdkInt >= 29; // Android 10 (API 29)
+  }
+
   /// Get the appropriate directory for storing files
   static Future<Directory> _getStorageDirectory() async {
-    if (Platform.isAndroid) {
-      // For Android, use external storage (Documents directory)
-      final directory = await getExternalStorageDirectory();
-      if (directory != null) {
-        final documentsDir = Directory('${directory.path}/Documents');
-        if (!await documentsDir.exists()) {
-          await documentsDir.create(recursive: true);
-        }
-        return documentsDir;
+    if (Platform.isAndroid && await _supportsScopedStorage()) {
+      // For Android 10+, try to use Downloads directory via Media Store
+      try {
+        return await _getDownloadsDirectory();
+      } catch (e) {
+        // Fallback to app-private directory if Downloads fails
+        return await _getAppPrivateDirectory();
       }
+    } else {
+      // For older Android versions or other platforms, use app-private directory
+      return await _getAppPrivateDirectory();
+    }
+  }
+
+  /// Get Downloads directory for Android 10+ using Media Store approach
+  static Future<Directory> _getDownloadsDirectory() async {
+    // For now, we'll use a simplified approach
+    // In a production app, you'd use platform channels to access Media Store
+    final directory = await getExternalStorageDirectory();
+    if (directory != null) {
+      final downloadsDir = Directory('${directory.path}/Download');
+      if (!await downloadsDir.exists()) {
+        await downloadsDir.create(recursive: true);
+      }
+      return downloadsDir;
+    }
+    throw Exception('Cannot access Downloads directory');
+  }
+
+  /// Get app-private directory as fallback
+  static Future<Directory> _getAppPrivateDirectory() async {
+    final directory = await getApplicationDocumentsDirectory();
+
+    // Create a Reports subdirectory for organization
+    final reportsDir = Directory('${directory.path}/Reports');
+    if (!await reportsDir.exists()) {
+      await reportsDir.create(recursive: true);
     }
 
-    // For iOS and other platforms, use application documents directory
-    return await getApplicationDocumentsDirectory();
+    return reportsDir;
   }
 
   /// Request storage permissions for Android
   static Future<bool> _requestStoragePermission() async {
     if (Platform.isAndroid) {
-      final status = await Permission.storage.request();
-      return status.isGranted;
+      final supportsScoped = await _supportsScopedStorage();
+      if (supportsScoped) {
+        // For Android 10+, we might need MANAGE_EXTERNAL_STORAGE
+        // but for now we'll try without it
+        return true;
+      }
     }
     return true; // iOS doesn't need explicit permission for documents directory
   }
@@ -54,7 +93,19 @@ class FileService {
       return filePath;
     } catch (e) {
       print('Error saving file: $e');
-      return null;
+      // Try fallback to app-private directory if external storage fails
+      try {
+        final fallbackDir = await _getAppPrivateDirectory();
+        final fallbackPath = '${fallbackDir.path}/$fileName.$extension';
+
+        final file = File(fallbackPath);
+        await file.writeAsString(content);
+
+        return fallbackPath;
+      } catch (fallbackError) {
+        print('Fallback save also failed: $fallbackError');
+        return null;
+      }
     }
   }
 
