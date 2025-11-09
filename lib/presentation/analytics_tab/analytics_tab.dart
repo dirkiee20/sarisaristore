@@ -5,6 +5,9 @@ import '../../core/app_export.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import '../../widgets/custom_icon_widget.dart';
 import '../../services/analytics_service.dart';
+import '../../services/demo_mode_service.dart';
+import '../../services/file_service.dart';
+import '../../services/product_service.dart';
 import './widgets/expense_widget.dart';
 import './widgets/insights_card_widget.dart';
 import './widgets/metric_card_widget.dart';
@@ -24,7 +27,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   String _selectedPeriod = 'Today';
   final List<String> _periods = ['Today', 'Week', 'Month', 'Year'];
   final AnalyticsService _analyticsService = AnalyticsService();
-  bool _isDemoMode = false;
+  final DemoModeService _demoModeService = DemoModeService();
   bool _isLoading = true;
 
   // Real data
@@ -37,6 +40,18 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   @override
   void initState() {
     super.initState();
+    _demoModeService.addListener(_onDemoModeChanged);
+    _loadAnalyticsData();
+  }
+
+  @override
+  void dispose() {
+    _demoModeService.removeListener(_onDemoModeChanged);
+    super.dispose();
+  }
+
+  void _onDemoModeChanged() {
+    // Reload data when demo mode changes
     _loadAnalyticsData();
   }
 
@@ -46,18 +61,25 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     });
 
     try {
-      await _loadRealAnalyticsData();
-      setState(() {
-        _isDemoMode = false;
-        _isLoading = false;
-      });
+      if (_demoModeService.isDemoMode) {
+        // Use demo data
+        _loadDemoAnalyticsData();
+        setState(() {
+          _isLoading = false;
+        });
+      } else {
+        await _loadRealAnalyticsData();
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       // Fallback to demo mode on error
+      _demoModeService.setDemoMode(true);
+      _loadDemoAnalyticsData();
       setState(() {
-        _isDemoMode = true;
         _isLoading = false;
       });
-      _loadDemoAnalyticsData();
     }
   }
 
@@ -243,28 +265,11 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   }
 
   void _switchToDemoMode() {
-    setState(() {
-      _isDemoMode = true;
-    });
-    _loadDemoAnalyticsData();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Switched to demo mode'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    _demoModeService.setDemoMode(true);
   }
 
   void _switchToDatabaseMode() async {
-    await _loadAnalyticsData();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isDemoMode
-            ? 'Still in demo mode (no data available)'
-            : 'Switched to database mode'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    _demoModeService.setDemoMode(false);
   }
 
   @override
@@ -292,6 +297,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         body: const Center(child: CircularProgressIndicator()),
         bottomNavigationBar: CustomBottomBar(
           currentIndex: 1,
+          showDemoToggle: true,
           onTap: _onBottomNavTap,
         ),
       );
@@ -301,7 +307,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Analytics${_isDemoMode ? " (Demo)" : ""}',
+          'Analytics${_demoModeService.isDemoMode ? " (Demo)" : ""}',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w600,
             color: theme.colorScheme.onSurface,
@@ -312,16 +318,6 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         elevation: 0,
         centerTitle: true,
         actions: [
-          IconButton(
-            onPressed: _isDemoMode ? _switchToDatabaseMode : _switchToDemoMode,
-            icon: CustomIconWidget(
-              iconName: _isDemoMode ? 'database' : 'preview',
-              color: theme.colorScheme.onSurface,
-              size: 24,
-            ),
-            tooltip:
-                _isDemoMode ? 'Switch to Database Mode' : 'Switch to Demo Mode',
-          ),
           IconButton(
             onPressed: _showReportsScreen,
             icon: CustomIconWidget(
@@ -453,13 +449,13 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     setState(() {
       _selectedPeriod = period;
     });
-    if (!_isDemoMode) {
+    if (!_demoModeService.isDemoMode) {
       _loadRealAnalyticsData();
     }
   }
 
   Future<void> _refreshAnalytics() async {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       // Simulate refresh for demo mode
       await Future.delayed(const Duration(milliseconds: 1500));
     } else {
@@ -471,7 +467,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Analytics updated for $_selectedPeriod${_isDemoMode ? " (Demo)" : ""}'),
+              'Analytics updated for $_selectedPeriod${_demoModeService.isDemoMode ? " (Demo)" : ""}'),
           duration: const Duration(seconds: 2),
           backgroundColor: const Color(0xFF27AE60),
         ),
@@ -480,7 +476,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   }
 
   List<Map<String, dynamic>> _getProfitTrendsForPeriod() {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       switch (_selectedPeriod) {
         case 'Today':
           return [
@@ -657,15 +653,112 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     );
   }
 
-  void _generateReport(String reportType) {
+  Future<void> _generateReport(String reportType) async {
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Generating $reportType report...'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: const Color(0xFF3498DB),
-      ),
-    );
+
+    try {
+      // Show loading message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Generating $reportType report...'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: const Color(0xFF3498DB),
+        ),
+      );
+
+      // Generate report content based on type
+      String reportContent;
+      String fileName;
+      String extension = 'csv'; // Default to CSV
+
+      switch (reportType) {
+        case 'Sales':
+          reportContent = await _generateSalesReport();
+          fileName =
+              'sales_report_${_selectedPeriod.toLowerCase()}_${DateTime.now().millisecondsSinceEpoch}';
+          break;
+        case 'P&L':
+          reportContent = await _generateProfitLossReport();
+          fileName =
+              'profit_loss_report_${_selectedPeriod.toLowerCase()}_${DateTime.now().millisecondsSinceEpoch}';
+          break;
+        case 'Inventory':
+          reportContent = await _generateInventoryReport();
+          fileName =
+              'inventory_report_${DateTime.now().millisecondsSinceEpoch}';
+          break;
+        case 'Customer':
+          reportContent = await _generateCustomerReport();
+          fileName =
+              'customer_report_${_selectedPeriod.toLowerCase()}_${DateTime.now().millisecondsSinceEpoch}';
+          break;
+        default:
+          throw Exception('Unknown report type: $reportType');
+      }
+
+      // Save report to file
+      final filePath = await FileService.saveReportToFile(
+        reportContent,
+        fileName,
+        extension,
+      );
+
+      if (filePath != null) {
+        // Show success message with share option
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                CustomIconWidget(
+                  iconName: 'check_circle',
+                  color: Colors.white,
+                  size: 5.w,
+                ),
+                SizedBox(width: 3.w),
+                Expanded(
+                  child: Text('$reportType report saved successfully!'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF27AE60),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Share',
+              textColor: Colors.white,
+              onPressed: () async {
+                try {
+                  await FileService.shareFile(filePath, '$reportType Report');
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to share report: $e'),
+                      backgroundColor: const Color(0xFFE74C3C),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        );
+      } else {
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Failed to save report. Please check storage permissions.'),
+            backgroundColor: Color(0xFFE74C3C),
+          ),
+        );
+      }
+    } catch (e) {
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to generate report: $e'),
+          backgroundColor: const Color(0xFFE74C3C),
+        ),
+      );
+    }
   }
 
   void _showMetricDetails(Map<String, dynamic> metric) {
@@ -723,5 +816,169 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         ],
       ),
     );
+  }
+
+  Future<String> _generateSalesReport() async {
+    final buffer = StringBuffer();
+
+    // Header
+    buffer.writeln('SALES REPORT');
+    buffer.writeln('Period: $_selectedPeriod');
+    buffer.writeln('Generated: ${DateTime.now()}');
+    buffer.writeln('');
+
+    // Summary metrics
+    final revenue =
+        await _analyticsService.getRevenueForPeriod(_selectedPeriod);
+    final transactionCount =
+        await _analyticsService.getTransactionCountForPeriod(_selectedPeriod);
+    final profit = await _analyticsService.getProfitForPeriod(_selectedPeriod);
+
+    buffer.writeln('SUMMARY:');
+    buffer.writeln('Total Revenue: ₱${revenue.toStringAsFixed(2)}');
+    buffer.writeln('Total Transactions: $transactionCount');
+    buffer.writeln('Total Profit: ₱${profit.toStringAsFixed(2)}');
+    buffer.writeln('');
+
+    // Top products
+    final topProducts =
+        await _analyticsService.getTopProductsForPeriod(_selectedPeriod);
+    buffer.writeln('TOP PRODUCTS:');
+    buffer.writeln('Product Name,Quantity Sold');
+    for (final product in topProducts) {
+      buffer.writeln('"${product['name']}","${product['quantity']}"');
+    }
+    buffer.writeln('');
+
+    // Profit trends
+    final profitTrends =
+        await _analyticsService.getProfitTrendsForPeriod(_selectedPeriod);
+    buffer.writeln('PROFIT TRENDS:');
+    buffer.writeln('Period,Profit Amount');
+    for (final trend in profitTrends) {
+      buffer.writeln(
+          '"${trend['label']}","₱${(trend['value'] as double).toStringAsFixed(2)}"');
+    }
+
+    return buffer.toString();
+  }
+
+  Future<String> _generateProfitLossReport() async {
+    final buffer = StringBuffer();
+
+    // Header
+    buffer.writeln('PROFIT & LOSS REPORT');
+    buffer.writeln('Period: $_selectedPeriod');
+    buffer.writeln('Generated: ${DateTime.now()}');
+    buffer.writeln('');
+
+    // Financial summary
+    final revenue =
+        await _analyticsService.getRevenueForPeriod(_selectedPeriod);
+    final profit = await _analyticsService.getProfitForPeriod(_selectedPeriod);
+    final expenses =
+        await _analyticsService.getExpensesForPeriod(_selectedPeriod);
+    final netIncome =
+        await _analyticsService.getNetIncomeForPeriod(_selectedPeriod);
+    final profitMargin =
+        await _analyticsService.getProfitMarginForPeriod(_selectedPeriod);
+
+    buffer.writeln('FINANCIAL SUMMARY:');
+    buffer.writeln('Total Revenue: ₱${revenue.toStringAsFixed(2)}');
+    buffer.writeln('Total Expenses: ₱${expenses.toStringAsFixed(2)}');
+    buffer.writeln('Gross Profit: ₱${profit.toStringAsFixed(2)}');
+    buffer.writeln('Net Income: ₱${netIncome.toStringAsFixed(2)}');
+    buffer.writeln('Profit Margin: ${profitMargin.toStringAsFixed(1)}%');
+    buffer.writeln('');
+
+    // Expense breakdown
+    final expenseCategories =
+        await _analyticsService.getExpensesByCategoryForPeriod(_selectedPeriod);
+    buffer.writeln('EXPENSE BREAKDOWN:');
+    buffer.writeln('Category,Amount');
+    expenseCategories.forEach((category, amount) {
+      buffer.writeln(
+          '"${category.replaceAll(',', ';')}","₱${amount.toStringAsFixed(2)}"');
+    });
+
+    return buffer.toString();
+  }
+
+  Future<String> _generateInventoryReport() async {
+    final buffer = StringBuffer();
+
+    // Header
+    buffer.writeln('INVENTORY REPORT');
+    buffer.writeln('Generated: ${DateTime.now()}');
+    buffer.writeln('');
+
+    // Get all products from product service
+    final productService = ProductService();
+    final products = await productService.getAllProducts();
+
+    buffer.writeln('PRODUCT INVENTORY:');
+    buffer.writeln(
+        'Product Name,Category,Current Stock,Cost Price,Selling Price,Total Value');
+
+    double totalValue = 0;
+    for (final product in products) {
+      final productValue = product.sellingPrice * product.stock;
+      totalValue += productValue;
+
+      buffer.writeln(
+          '"${product.name.replaceAll('"', '""')}","${product.category}","${product.stock}","₱${product.costPrice.toStringAsFixed(2)}","₱${product.sellingPrice.toStringAsFixed(2)}","₱${productValue.toStringAsFixed(2)}"');
+    }
+
+    buffer.writeln('');
+    buffer.writeln('SUMMARY:');
+    buffer.writeln('Total Products: ${products.length}');
+    buffer.writeln('Total Inventory Value: ₱${totalValue.toStringAsFixed(2)}');
+
+    // Low stock items
+    final lowStockProducts = products.where((p) => p.stock <= 10).toList();
+    if (lowStockProducts.isNotEmpty) {
+      buffer.writeln('');
+      buffer.writeln('LOW STOCK ITEMS (≤10 units):');
+      buffer.writeln('Product Name,Current Stock');
+      for (final product in lowStockProducts) {
+        buffer.writeln(
+            '"${product.name.replaceAll('"', '""')}","${product.stock}"');
+      }
+    }
+
+    return buffer.toString();
+  }
+
+  Future<String> _generateCustomerReport() async {
+    final buffer = StringBuffer();
+
+    // Header
+    buffer.writeln('CUSTOMER ANALYSIS REPORT');
+    buffer.writeln('Period: $_selectedPeriod');
+    buffer.writeln('Generated: ${DateTime.now()}');
+    buffer.writeln('');
+
+    // Transaction analysis
+    final transactionCount =
+        await _analyticsService.getTransactionCountForPeriod(_selectedPeriod);
+    final revenue =
+        await _analyticsService.getRevenueForPeriod(_selectedPeriod);
+
+    buffer.writeln('TRANSACTION ANALYSIS:');
+    buffer.writeln('Total Transactions: $transactionCount');
+    buffer.writeln('Total Revenue: ₱${revenue.toStringAsFixed(2)}');
+
+    if (transactionCount > 0) {
+      final avgTransactionValue = revenue / transactionCount;
+      buffer.writeln(
+          'Average Transaction Value: ₱${avgTransactionValue.toStringAsFixed(2)}');
+    }
+
+    buffer.writeln('');
+    buffer.writeln(
+        'NOTE: Detailed customer data requires additional customer management features.');
+    buffer.writeln('This report provides basic transaction analysis.');
+
+    return buffer.toString();
   }
 }

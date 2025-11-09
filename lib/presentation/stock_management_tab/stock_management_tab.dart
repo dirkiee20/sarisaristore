@@ -8,6 +8,7 @@ import '../../data/models/product_model.dart';
 import '../../services/product_service.dart';
 import '../../services/file_service.dart';
 import '../../services/barcode_scanner_service.dart';
+import '../../services/demo_mode_service.dart';
 import './widgets/stock_adjustment_modal.dart';
 import './widgets/stock_filter_chips.dart';
 import './widgets/stock_item_card.dart';
@@ -27,11 +28,11 @@ class _StockManagementTabState extends State<StockManagementTab>
   String _sortBy = 'name';
   bool _isMultiSelectMode = false;
   bool _isLoading = true;
-  bool _isDemoMode = false;
   final Set<int> _selectedProducts = {};
   late AnimationController _fabAnimationController;
   late Animation<double> _fabAnimation;
   final ProductService _productService = ProductService();
+  final DemoModeService _demoModeService = DemoModeService();
 
   List<ProductModel> _products = [];
 
@@ -130,6 +131,7 @@ class _StockManagementTabState extends State<StockManagementTab>
   @override
   void initState() {
     super.initState();
+    _demoModeService.addListener(_onDemoModeChanged);
     _fabAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -143,8 +145,13 @@ class _StockManagementTabState extends State<StockManagementTab>
 
   @override
   void dispose() {
-    _fabAnimationController.dispose();
+    _demoModeService.removeListener(_onDemoModeChanged);
     super.dispose();
+  }
+
+  void _onDemoModeChanged() {
+    // Reload data when demo mode changes
+    _loadProducts();
   }
 
   Future<void> _loadProducts() async {
@@ -153,19 +160,26 @@ class _StockManagementTabState extends State<StockManagementTab>
     });
 
     try {
-      final products = await _productService.getAllProducts();
-      setState(() {
-        _products = products;
-        _isDemoMode = false;
-        _isLoading = false;
-      });
+      if (_demoModeService.isDemoMode) {
+        // Use demo data
+        _loadDemoProducts();
+        setState(() {
+          _isLoading = false;
+        });
+      } else {
+        final products = await _productService.getAllProducts();
+        setState(() {
+          _products = products;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       // Fallback to demo mode on error
+      _demoModeService.setDemoMode(true);
+      _loadDemoProducts();
       setState(() {
-        _isDemoMode = true;
         _isLoading = false;
       });
-      _loadDemoProducts();
     }
   }
 
@@ -187,28 +201,11 @@ class _StockManagementTabState extends State<StockManagementTab>
   }
 
   void _switchToDemoMode() {
-    setState(() {
-      _isDemoMode = true;
-    });
-    _loadDemoProducts();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Switched to demo mode'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    _demoModeService.setDemoMode(true);
   }
 
   void _switchToDatabaseMode() async {
-    await _loadProducts();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isDemoMode
-            ? 'Still in demo mode (no products in database)'
-            : 'Switched to database mode'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    _demoModeService.setDemoMode(false);
   }
 
   @override
@@ -236,6 +233,7 @@ class _StockManagementTabState extends State<StockManagementTab>
         ),
         bottomNavigationBar: CustomBottomBar(
           currentIndex: 2,
+          showDemoToggle: true,
           onTap: (index) {
             switch (index) {
               case 0:
@@ -263,7 +261,7 @@ class _StockManagementTabState extends State<StockManagementTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Stock Management${_isDemoMode ? " (Demo)" : ""}',
+              'Stock Management${_demoModeService.isDemoMode ? " (Demo)" : ""}',
               style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textPrimaryLight,
@@ -298,18 +296,6 @@ class _StockManagementTabState extends State<StockManagementTab>
               tooltip: 'Exit Selection',
             ),
           ] else ...[
-            IconButton(
-              onPressed:
-                  _isDemoMode ? _switchToDatabaseMode : _switchToDemoMode,
-              icon: CustomIconWidget(
-                iconName: _isDemoMode ? 'database' : 'preview',
-                color: AppTheme.textPrimaryLight,
-                size: 24,
-              ),
-              tooltip: _isDemoMode
-                  ? 'Switch to Database Mode'
-                  : 'Switch to Demo Mode',
-            ),
             IconButton(
               onPressed: () => _showNotificationSettings(context),
               icon: Stack(
@@ -434,7 +420,7 @@ class _StockManagementTabState extends State<StockManagementTab>
                           onTap: () => _handleProductTap(product.id!),
                           onStockAdjustment: () =>
                               _showStockAdjustmentModal(product),
-                          onReorder: () => _handleReorder(product),
+                          onReorder: () => _quickCheckout(product),
                         );
                       },
                     ),
@@ -605,7 +591,7 @@ class _StockManagementTabState extends State<StockManagementTab>
   }
 
   void _showStockAdjustmentModal(ProductModel product) {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Stock adjustments are disabled in demo mode'),
@@ -649,89 +635,38 @@ class _StockManagementTabState extends State<StockManagementTab>
     );
   }
 
-  void _handleReorder(ProductModel product) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Reorder Product',
-          style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Create a reorder request for:',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-            SizedBox(height: 1.h),
-            Text(
-              product.name,
-              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              'Current Stock: ${product.stock} units',
-              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-            Text(
-              'Reorder Level: 10 units', // Using default reorder level
-              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Reorder request created for ${product.name}'),
-                  backgroundColor: AppTheme.successLight,
-                ),
-              );
-              // TODO: Implement actual reorder functionality with backend
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryLight,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'Create Request',
-              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  void _quickCheckout(ProductModel product) {
+    // Navigate to checkout screen with selected product
+    Navigator.pushNamed(
+      context,
+      '/checkout',
+      arguments: {
+        "id": product.id,
+        "name": product.name,
+        "category": product.category,
+        "stock": product.stock,
+        "costPrice": product.costPrice,
+        "sellingPrice": product.sellingPrice.toStringAsFixed(2),
+        "profitMargin": product.profitMargin,
+        "image": product.imagePath ??
+            "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+        "semanticLabel": "${product.name} product image",
+        "barcode": product.barcode,
+        "description": product.description,
+        "lastUpdated": product.updatedAt,
+      },
+    ).then((_) {
+      // Refresh products after returning from checkout (purchase completed)
+      if (!_demoModeService.isDemoMode) {
+        _loadProducts();
+      }
+    });
   }
 
   void _bulkStockUpdate() async {
     if (_selectedProducts.isEmpty) return;
 
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Bulk stock updates are disabled in demo mode'),
@@ -842,7 +777,7 @@ class _StockManagementTabState extends State<StockManagementTab>
     debugPrint('showBulkUpdateDialog called');
     debugPrint('Context: $context');
     debugPrint('Context mounted: ${context.mounted}');
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       debugPrint('Demo mode detected, showing warning');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -882,7 +817,7 @@ class _StockManagementTabState extends State<StockManagementTab>
     debugPrint('_exportStockReport called');
     debugPrint('Context: $context');
     debugPrint('Context mounted: ${context.mounted}');
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       debugPrint('Demo mode detected, showing warning');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

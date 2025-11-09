@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/demo_mode_service.dart';
+
 /// Navigation item data structure for bottom navigation
 class BottomNavItem {
   final String label;
@@ -40,6 +42,9 @@ class CustomBottomBar extends StatelessWidget {
   /// Navigation type (fixed or shifting)
   final BottomNavigationBarType type;
 
+  /// Whether to show demo mode toggle
+  final bool showDemoToggle;
+
   const CustomBottomBar({
     super.key,
     required this.currentIndex,
@@ -49,6 +54,7 @@ class CustomBottomBar extends StatelessWidget {
     this.unselectedItemColor,
     this.showLabels = true,
     this.type = BottomNavigationBarType.fixed,
+    this.showDemoToggle = false,
   });
 
   /// Predefined navigation items for retail business management
@@ -80,6 +86,8 @@ class CustomBottomBar extends StatelessWidget {
     final brightness = theme.brightness;
     final isLight = brightness == Brightness.light;
 
+    final demoModeService = DemoModeService();
+
     return Container(
       decoration: BoxDecoration(
         color: backgroundColor ?? colorScheme.surface,
@@ -93,55 +101,133 @@ class CustomBottomBar extends StatelessWidget {
           ),
         ],
       ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex.clamp(0, _navigationItems.length - 1),
-        onTap: (index) {
-          if (onTap != null) {
-            onTap!(index);
-          } else {
-            // Default navigation behavior
-            _navigateToRoute(context, _navigationItems[index].route);
-          }
-        },
-        type: type,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        selectedItemColor: selectedItemColor ??
-            (isLight ? const Color(0xFF2C3E50) : const Color(0xFF34495E)),
-        unselectedItemColor: unselectedItemColor ??
-            (isLight ? const Color(0xFF7F8C8D) : const Color(0xFFBDC3C7)),
-        showSelectedLabels: showLabels,
-        showUnselectedLabels: showLabels,
-        selectedLabelStyle: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.4,
-        ),
-        unselectedLabelStyle: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.4,
-        ),
-        items: _navigationItems
-            .map((item) => BottomNavigationBarItem(
-                  icon: Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Icon(
-                      item.icon,
-                      size: 24,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Demo mode toggle (if enabled)
+          if (showDemoToggle)
+            ListenableBuilder(
+              listenable: demoModeService,
+              builder: (context, child) {
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: demoModeService.isDemoMode
+                        ? const Color(0xFFFFF3CD) // Light yellow for demo mode
+                        : const Color(0xFFE8F5E8), // Light green for live mode
+                    border: Border(
+                      bottom: BorderSide(
+                        color: demoModeService.isDemoMode
+                            ? const Color(0xFFFFC107).withValues(alpha: 0.3)
+                            : const Color(0xFF4CAF50).withValues(alpha: 0.3),
+                        width: 1,
+                      ),
                     ),
                   ),
-                  activeIcon: Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Icon(
-                      item.activeIcon ?? item.icon,
-                      size: 24,
-                    ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        demoModeService.isDemoMode
+                            ? Icons.preview
+                            : Icons.verified,
+                        size: 20,
+                        color: demoModeService.isDemoMode
+                            ? const Color(0xFFFF6F00)
+                            : const Color(0xFF2E7D32),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          demoModeService.statusText,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: demoModeService.isDemoMode
+                                ? const Color(0xFF8D6E63)
+                                : const Color(0xFF2E7D32),
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: demoModeService.isDemoMode,
+                        onChanged: (value) {
+                          demoModeService.setDemoMode(value);
+                          // Show feedback
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Switched to ${value ? "Demo" : "Live"} Mode',
+                              ),
+                              duration: const Duration(seconds: 2),
+                              backgroundColor: value
+                                  ? const Color(0xFFFF6F00)
+                                  : const Color(0xFF4CAF50),
+                            ),
+                          );
+                        },
+                        activeColor: const Color(0xFFFF6F00),
+                        activeTrackColor:
+                            const Color(0xFFFF6F00).withValues(alpha: 0.3),
+                      ),
+                    ],
                   ),
-                  label: item.label,
-                  tooltip: item.label,
-                ))
-            .toList(),
+                );
+              },
+            ),
+
+          // Bottom Navigation Bar
+          BottomNavigationBar(
+            currentIndex: currentIndex.clamp(0, _navigationItems.length - 1),
+            onTap: (index) {
+              if (onTap != null) {
+                onTap!(index);
+              } else {
+                // Default navigation behavior
+                _navigateToRoute(context, _navigationItems[index].route);
+              }
+            },
+            type: type,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            selectedItemColor: selectedItemColor ??
+                (isLight ? const Color(0xFF2C3E50) : const Color(0xFF34495E)),
+            unselectedItemColor: unselectedItemColor ??
+                (isLight ? const Color(0xFF7F8C8D) : const Color(0xFFBDC3C7)),
+            showSelectedLabels: showLabels,
+            showUnselectedLabels: showLabels,
+            selectedLabelStyle: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.4,
+            ),
+            unselectedLabelStyle: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0.4,
+            ),
+            items: _navigationItems
+                .map((item) => BottomNavigationBarItem(
+                      icon: Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Icon(
+                          item.icon,
+                          size: 24,
+                        ),
+                      ),
+                      activeIcon: Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Icon(
+                          item.activeIcon ?? item.icon,
+                          size: 24,
+                        ),
+                      ),
+                      label: item.label,
+                      tooltip: item.label,
+                    ))
+                .toList(),
+          ),
+        ],
       ),
     );
   }

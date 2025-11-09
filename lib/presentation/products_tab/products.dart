@@ -5,6 +5,8 @@ import '../../core/app_export.dart';
 import '../../data/models/product_model.dart';
 import '../../services/product_service.dart';
 import '../../services/barcode_scanner_service.dart';
+import '../../services/demo_mode_service.dart';
+import '../../widgets/custom_bottom_bar.dart';
 import './widgets/empty_state_widget.dart';
 import './widgets/filter_chips_widget.dart';
 import './widgets/product_card_widget.dart';
@@ -21,10 +23,10 @@ class _ProductsTabState extends State<ProductsTab>
     with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final ProductService _productService = ProductService();
+  final DemoModeService _demoModeService = DemoModeService();
   String _searchQuery = '';
   String? _selectedCategory;
   bool _isLoading = true;
-  bool _isDemoMode = false;
   bool _showLowStock = false;
   bool _showHighProfit = false;
   bool _showRecentUpdates = false;
@@ -140,7 +142,7 @@ class _ProductsTabState extends State<ProductsTab>
   List<Map<String, dynamic>> get _filteredProducts {
     List<Map<String, dynamic>> filtered;
 
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       filtered = List.from(_demoProducts);
     } else {
       // Convert ProductModel to Map for compatibility with existing UI
@@ -211,42 +213,30 @@ class _ProductsTabState extends State<ProductsTab>
   @override
   void initState() {
     super.initState();
+    _demoModeService.addListener(_onDemoModeChanged);
+    _loadProducts();
+  }
+
+  @override
+  void dispose() {
+    _demoModeService.removeListener(_onDemoModeChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onDemoModeChanged() {
+    // Reload data when demo mode changes
     _loadProducts();
   }
 
   // Method to manually switch to demo mode
   void _switchToDemoMode() {
-    setState(() {
-      _isDemoMode = true;
-      _isLoading = false;
-      _products = [];
-      _categories = [];
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Switched to demo mode'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    _demoModeService.setDemoMode(true);
   }
 
   // Method to switch back to database mode
   void _switchToDatabaseMode() async {
-    await _loadProducts();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isDemoMode
-            ? 'Still in demo mode (no products in database)'
-            : 'Switched to database mode'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+    _demoModeService.setDemoMode(false);
   }
 
   Future<void> _loadProducts() async {
@@ -255,40 +245,45 @@ class _ProductsTabState extends State<ProductsTab>
     });
 
     try {
-      final products = await _productService.getAllProducts();
-
-      // Check if we should use demo mode (no real products)
-      if (products.isEmpty) {
+      if (_demoModeService.isDemoMode) {
+        // Use demo data
         setState(() {
-          _isDemoMode = true;
+          _products = [];
+          _categories = [];
           _isLoading = false;
         });
       } else {
-        // Get unique categories from real products
-        final categories = products.map((p) => p.category).toSet().toList();
+        final products = await _productService.getAllProducts();
 
-        setState(() {
-          _products = products;
-          _categories = categories;
-          _isDemoMode = false;
-          _isLoading = false;
-        });
+        // Check if we should use demo mode (no real products)
+        if (products.isEmpty) {
+          _demoModeService.setDemoMode(true);
+          setState(() {
+            _isLoading = false;
+          });
+        } else {
+          // Get unique categories from real products
+          final categories = products.map((p) => p.category).toSet().toList();
+
+          setState(() {
+            _products = products;
+            _categories = categories;
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
       // For demo purposes, fall back to demo mode on error
-      setState(() {
-        _isDemoMode = true;
-        _isLoading = false;
-      });
+      _demoModeService.setDemoMode(true);
     }
   }
 
   // Method to refresh products after purchase (called from checkout)
   void _refreshProductsAfterPurchase() {
-    if (!_isDemoMode) {
+    if (!_demoModeService.isDemoMode) {
       _loadProducts();
     }
   }
@@ -334,7 +329,7 @@ class _ProductsTabState extends State<ProductsTab>
                         ),
                         SizedBox(height: 0.5.h),
                         Text(
-                          '${_filteredProducts.length} items in inventory${_isDemoMode ? " (Demo)" : ""}',
+                          '${_filteredProducts.length} items in inventory${_demoModeService.isDemoMode ? " (Demo)" : ""}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: isLight
                                 ? AppTheme.textSecondaryLight
@@ -347,19 +342,6 @@ class _ProductsTabState extends State<ProductsTab>
                   // Quick actions
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: _isDemoMode
-                            ? _switchToDatabaseMode
-                            : _switchToDemoMode,
-                        icon: CustomIconWidget(
-                          iconName: _isDemoMode ? 'database' : 'preview',
-                          color: AppTheme.primaryLight,
-                          size: 24,
-                        ),
-                        tooltip: _isDemoMode
-                            ? 'Switch to Database Mode'
-                            : 'Switch to Demo Mode',
-                      ),
                       IconButton(
                         onPressed: _refreshProducts,
                         icon: CustomIconWidget(
@@ -390,7 +372,7 @@ class _ProductsTabState extends State<ProductsTab>
 
             // Filter Chips
             FilterChipsWidget(
-              categories: _isDemoMode
+              categories: _demoModeService.isDemoMode
                   ? _demoCategories
                   : _categories
                       .map((cat) => {
@@ -455,7 +437,23 @@ class _ProductsTabState extends State<ProductsTab>
       ),
 
       // Bottom Navigation Bar
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: CustomBottomBar(
+        currentIndex: 0,
+        showDemoToggle: true,
+        onTap: (index) {
+          switch (index) {
+            case 0:
+              // Already on Products tab
+              break;
+            case 1:
+              Navigator.pushReplacementNamed(context, '/analytics-tab');
+              break;
+            case 2:
+              Navigator.pushReplacementNamed(context, '/stock-management-tab');
+              break;
+          }
+        },
+      ),
 
       // Floating Action Button
       floatingActionButton: FloatingActionButton(
@@ -472,85 +470,8 @@ class _ProductsTabState extends State<ProductsTab>
     );
   }
 
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        currentIndex: 0, // Products tab is active
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        selectedItemColor: AppTheme.primaryLight,
-        unselectedItemColor: AppTheme.textSecondaryLight,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              // Already on Products tab
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/analytics-tab');
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/stock-management-tab');
-              break;
-          }
-        },
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.inventory_2_outlined,
-              color: AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            activeIcon: Icon(
-              Icons.inventory_2,
-              color: AppTheme.primaryLight,
-              size: 24,
-            ),
-            label: 'Products',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.analytics_outlined,
-              color: AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            activeIcon: Icon(
-              Icons.analytics,
-              color: AppTheme.primaryLight,
-              size: 24,
-            ),
-            label: 'Analytics',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.warehouse_outlined,
-              color: AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            activeIcon: Icon(
-              Icons.warehouse,
-              color: AppTheme.primaryLight,
-              size: 24,
-            ),
-            label: 'Stock',
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _refreshProducts() async {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       // Simulate refresh for demo mode
       setState(() {
         _isLoading = true;
@@ -568,7 +489,7 @@ class _ProductsTabState extends State<ProductsTab>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Products refreshed successfully${_isDemoMode ? " (Demo)" : ""}'),
+              'Products refreshed successfully${_demoModeService.isDemoMode ? " (Demo)" : ""}'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -761,7 +682,7 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   void _editProduct(Map<String, dynamic> product) {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot edit demo products'),
@@ -785,7 +706,7 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   void _deleteProduct(Map<String, dynamic> product) {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       // Can't delete demo products
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -831,7 +752,7 @@ class _ProductsTabState extends State<ProductsTab>
   }
 
   void _updateStock(Map<String, dynamic> product) {
-    if (_isDemoMode) {
+    if (_demoModeService.isDemoMode) {
       // Can't update demo products
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

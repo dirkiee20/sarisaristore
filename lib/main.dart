@@ -5,6 +5,7 @@ import 'package:sizer/sizer.dart';
 import '../core/app_export.dart';
 import '../widgets/custom_error_widget.dart';
 import '../data/database/database_initializer.dart';
+import '../services/demo_mode_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,30 +45,42 @@ void main() async {
   });
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final DemoModeService _demoModeService = DemoModeService();
+
   @override
   Widget build(BuildContext context) {
     return Sizer(builder: (context, orientation, screenType) {
-      return MaterialApp(
-        title: 'sarisari_pro',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.light,
-        // 🚨 CRITICAL: NEVER REMOVE OR MODIFY
+      return ListenableBuilder(
+        listenable: _demoModeService,
         builder: (context, child) {
-          return MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(1.0),
-            ),
-            child: child!,
+          return MaterialApp(
+            title:
+                'sarisari_pro${_demoModeService.isDemoMode ? " (Demo)" : ""}',
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: ThemeMode.light,
+            // 🚨 CRITICAL: NEVER REMOVE OR MODIFY
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(1.0),
+                ),
+                child: child!,
+              );
+            },
+            // 🚨 END CRITICAL SECTION
+            debugShowCheckedModeBanner: false,
+            routes: AppRoutes.routes,
+            initialRoute: AppRoutes.initial,
           );
         },
-        // 🚨 END CRITICAL SECTION
-        debugShowCheckedModeBanner: false,
-        routes: AppRoutes.routes,
-        initialRoute: AppRoutes.initial,
       );
     });
   }
 }
-
