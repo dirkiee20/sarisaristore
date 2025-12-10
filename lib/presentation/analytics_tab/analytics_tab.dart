@@ -10,9 +10,11 @@ import '../../services/product_service.dart';
 import './widgets/expense_widget.dart';
 import './widgets/insights_card_widget.dart';
 import './widgets/metric_card_widget.dart';
+import './widgets/payment_method_cards_widget.dart';
 import './widgets/profit_trend_chart_widget.dart';
 import './widgets/time_period_selector_widget.dart';
 import './widgets/top_products_chart_widget.dart';
+import './widgets/customer_widget.dart';
 
 class AnalyticsTab extends StatefulWidget {
   const AnalyticsTab({super.key});
@@ -34,6 +36,8 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   List<Map<String, dynamic>> _topProducts = [];
   List<Map<String, dynamic>> _expenseData = [];
   List<Map<String, dynamic>> _insights = [];
+  Map<String, int> _paymentMethodStats = {};
+  Map<String, double> _paymentMethodAmounts = {};
 
   @override
   void initState() {
@@ -87,6 +91,10 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     final expenseCategories =
         await _analyticsService.getExpensesByCategoryForPeriod(_selectedPeriod);
     final lowStockCount = await _analyticsService.getLowStockProductsCount();
+    final paymentMethodStats =
+        await _analyticsService.getPaymentMethodStatsForPeriod(_selectedPeriod);
+    final paymentMethodAmounts = await _analyticsService
+        .getPaymentMethodAmountsForPeriod(_selectedPeriod);
 
     setState(() {
       _metrics = [
@@ -122,6 +130,8 @@ class _AnalyticsTabState extends State<AnalyticsTab>
 
       _profitTrends = profitTrends;
       _topProducts = topProducts;
+      _paymentMethodStats = paymentMethodStats;
+      _paymentMethodAmounts = paymentMethodAmounts;
 
       _expenseData = expenseCategories.entries
           .map((entry) => {
@@ -202,6 +212,15 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         centerTitle: true,
         actions: [
           IconButton(
+            onPressed: () => Navigator.pushNamed(context, '/expenses'),
+            icon: CustomIconWidget(
+              iconName: 'receipt_long',
+              color: theme.colorScheme.onSurface,
+              size: 24,
+            ),
+            tooltip: 'Expenses',
+          ),
+          IconButton(
             onPressed: _showReportsScreen,
             icon: CustomIconWidget(
               iconName: 'assessment',
@@ -247,6 +266,18 @@ class _AnalyticsTabState extends State<AnalyticsTab>
                   },
                 ),
               ),
+            ),
+
+            // Payment Method Cards
+            SliverToBoxAdapter(
+              child: PaymentMethodCardsWidget(
+                paymentAmounts: _paymentMethodAmounts,
+              ),
+            ),
+
+            // Customer Widget
+            SliverToBoxAdapter(
+              child: const CustomerWidget(),
             ),
 
             // Profit Trend Chart
@@ -612,6 +643,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   }
 
   void _showMetricDetails(Map<String, dynamic> metric) {
+    // Show regular metric details
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

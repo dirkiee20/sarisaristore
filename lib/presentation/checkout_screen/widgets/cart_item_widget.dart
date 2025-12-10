@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 import '../../../data/models/product_model.dart';
+import '../../../widgets/custom_image_widget.dart';
 
 class CartItemWidget extends StatelessWidget {
   final ProductModel product;
@@ -27,113 +28,147 @@ class CartItemWidget extends StatelessWidget {
       margin: EdgeInsets.only(bottom: 2.h),
       child: Padding(
         padding: EdgeInsets.all(2.w),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Product name and remove button
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    product.name,
-                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+            // Product Image
+            Container(
+              width: 15.w,
+              height: 15.w,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: AppTheme.lightTheme.colorScheme.surface,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CustomImageWidget(
+                  imageUrl: product.imagePath ??
+                      "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+                  width: 15.w,
+                  height: 15.w,
+                  fit: BoxFit.cover,
+                  semanticLabel: "${product.name} product image",
                 ),
-                IconButton(
-                  onPressed: onRemove,
-                  icon: CustomIconWidget(
-                    iconName: 'close',
-                    color: AppTheme.errorLight,
-                    size: 5.w,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
+              ),
             ),
-            SizedBox(height: 1.h),
+            SizedBox(width: 3.w),
 
-            // Price and quantity controls
-            Row(
-              children: [
-                // Quantity controls
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppTheme.dividerLight),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+            // Product Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Product name and remove button
+                  Row(
                     children: [
-                      IconButton(
-                        onPressed: () {
-                          onQuantityChanged(quantity - 1);
-                          HapticFeedback.lightImpact();
-                        },
-                        icon: CustomIconWidget(
-                          iconName: 'remove',
-                          color: AppTheme.textPrimaryLight,
-                          size: 4.w,
-                        ),
-                        padding: EdgeInsets.all(1.w),
-                        constraints: const BoxConstraints(),
-                      ),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 3.w),
+                      Expanded(
                         child: Text(
-                          quantity.toString(),
-                          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                          product.name,
+                          style: AppTheme.lightTheme.textTheme.titleMedium
+                              ?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       IconButton(
-                        onPressed: quantity < product.stock
-                            ? () {
-                                onQuantityChanged(quantity + 1);
-                                HapticFeedback.lightImpact();
-                              }
-                            : null,
+                        onPressed: onRemove,
                         icon: CustomIconWidget(
-                          iconName: 'add',
-                          color: quantity < product.stock
-                              ? AppTheme.textPrimaryLight
-                              : AppTheme.textDisabledLight,
-                          size: 4.w,
+                          iconName: 'close',
+                          color: AppTheme.errorLight,
+                          size: 5.w,
                         ),
-                        padding: EdgeInsets.all(1.w),
+                        padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
                     ],
                   ),
-                ),
-                const Spacer(),
+                  SizedBox(height: 1.h),
 
-                // Subtotal
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '₱${product.sellingPrice.toStringAsFixed(2)} × $quantity',
-                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondaryLight,
+                  // Price and quantity controls
+                  Row(
+                    children: [
+                      // Quantity controls
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.dividerLight),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              onPressed: () {
+                                onQuantityChanged(quantity - 1);
+                                HapticFeedback.lightImpact();
+                              },
+                              icon: CustomIconWidget(
+                                iconName: 'remove',
+                                color: AppTheme.textPrimaryLight,
+                                size: 4.w,
+                              ),
+                              padding: EdgeInsets.all(1.w),
+                              constraints: const BoxConstraints(),
+                            ),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 3.w),
+                              child: Text(
+                                quantity.toString(),
+                                style: AppTheme.lightTheme.textTheme.titleMedium
+                                    ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: quantity < product.stock
+                                  ? () {
+                                      onQuantityChanged(quantity + 1);
+                                      HapticFeedback.lightImpact();
+                                    }
+                                  : null,
+                              icon: CustomIconWidget(
+                                iconName: 'add',
+                                color: quantity < product.stock
+                                    ? AppTheme.textPrimaryLight
+                                    : AppTheme.textDisabledLight,
+                                size: 4.w,
+                              ),
+                              padding: EdgeInsets.all(1.w),
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 0.5.h),
-                    Text(
-                      '₱${subtotal.toStringAsFixed(2)}',
-                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                        color: AppTheme.primaryLight,
-                        fontWeight: FontWeight.w600,
+                      const Spacer(),
+
+                      // Subtotal
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '₱${product.sellingPrice.toStringAsFixed(2)} × $quantity',
+                            style: AppTheme.lightTheme.textTheme.bodySmall
+                                ?.copyWith(
+                              color: AppTheme.textSecondaryLight,
+                            ),
+                          ),
+                          SizedBox(height: 0.5.h),
+                          Text(
+                            '₱${subtotal.toStringAsFixed(2)}',
+                            style: AppTheme.lightTheme.textTheme.titleMedium
+                                ?.copyWith(
+                              color: AppTheme.primaryLight,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -141,4 +176,3 @@ class CartItemWidget extends StatelessWidget {
     );
   }
 }
-

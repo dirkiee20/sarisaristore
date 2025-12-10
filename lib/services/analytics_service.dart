@@ -1,10 +1,12 @@
 import '../data/repositories/transaction_repository.dart';
 import '../data/repositories/product_repository.dart';
+import '../data/repositories/expense_repository.dart';
 
 /// Service for Analytics business logic
 class AnalyticsService {
   final TransactionRepository _transactionRepository = TransactionRepository();
   final ProductRepository _productRepository = ProductRepository();
+  final ExpenseRepository _expenseRepository = ExpenseRepository();
 
   /// Get date range for period
   Map<String, DateTime> _getDateRangeForPeriod(String period) {
@@ -76,11 +78,23 @@ class AnalyticsService {
     return totalCost;
   }
 
-  /// Get net income for period
+  /// Get business expenses for period (additional expenses like rent, utilities, etc.)
+  Future<double> getBusinessExpensesForPeriod(String period) async {
+    final dateRange = _getDateRangeForPeriod(period);
+    return await _expenseRepository.getTotalExpenses(
+      dateRange['start']!,
+      dateRange['end']!,
+    );
+  }
+
+  /// Get net income for period (includes both product costs and business expenses)
   Future<double> getNetIncomeForPeriod(String period) async {
     final profit = await getProfitForPeriod(period);
-    final expenses = await getExpensesForPeriod(period);
-    return profit - expenses;
+    final productCosts =
+        await getExpensesForPeriod(period); // Cost of products sold
+    final businessExpenses = await getBusinessExpensesForPeriod(
+        period); // Additional business expenses
+    return profit - productCosts - businessExpenses;
   }
 
   /// Get transaction count for period
@@ -218,5 +232,46 @@ class AnalyticsService {
     final products =
         await _productRepository.getLowStockProducts(threshold: threshold);
     return products.length;
+  }
+
+  /// Get payment method statistics for period
+  Future<Map<String, int>> getPaymentMethodStatsForPeriod(String period) async {
+    final dateRange = _getDateRangeForPeriod(period);
+    final transactions =
+        await _transactionRepository.getTransactionsByDateRange(
+      dateRange['start']!,
+      dateRange['end']!,
+    );
+
+    // Count transactions by payment method
+    final Map<String, int> paymentStats = {};
+    for (final transaction in transactions) {
+      final method = transaction.paymentMethod ?? 'Unknown';
+      paymentStats[method] = (paymentStats[method] ?? 0) + 1;
+    }
+
+    return paymentStats;
+  }
+
+  /// Get payment method amounts for period (cumulative amounts by payment method)
+  Future<Map<String, double>> getPaymentMethodAmountsForPeriod(
+      String period) async {
+    final dateRange = _getDateRangeForPeriod(period);
+    final transactions =
+        await _transactionRepository.getTransactionsByDateRange(
+      dateRange['start']!,
+      dateRange['end']!,
+    );
+
+    // Sum amounts by payment method (use totalAmount, not paymentAmount to avoid including change)
+    final Map<String, double> paymentAmounts = {};
+    for (final transaction in transactions) {
+      final method = transaction.paymentMethod ?? 'Unknown';
+      final amount = transaction
+          .totalAmount; // Use actual transaction value, not amount paid
+      paymentAmounts[method] = (paymentAmounts[method] ?? 0) + amount;
+    }
+
+    return paymentAmounts;
   }
 }

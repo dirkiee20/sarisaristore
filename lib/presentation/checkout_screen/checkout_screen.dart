@@ -4,17 +4,19 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../data/models/product_model.dart';
-import '../../services/product_service.dart';
 import '../../services/transaction_service.dart';
 import './widgets/cart_item_widget.dart';
-import './widgets/product_search_widget.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final Map<String, dynamic>? product;
-  
+  final bool cartOnly;
+  final List<Map<String, dynamic>>? cartItems;
+
   const CheckoutScreen({
     super.key,
     this.product,
+    this.cartOnly = false,
+    this.cartItems,
   });
 
   @override
@@ -22,92 +24,29 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final ProductService _productService = ProductService();
   final TransactionService _transactionService = TransactionService();
-  
-  List<ProductModel> _allProducts = [];
+
   List<Map<String, dynamic>> _cartItems = []; // {productId, product, quantity}
-  bool _isLoading = false;
   bool _isProcessing = false;
-  String _searchQuery = '';
-  
+
   // Single product checkout state
   int _singleProductQuantity = 1;
+
+  // Payment state
+  String? _selectedPaymentMethod;
+  double? _paymentAmount;
+
+  // Customer state
+  String? _customerName;
+  String? _customerContact;
+  bool _showCustomerDetails = false;
 
   @override
   void initState() {
     super.initState();
-    _loadProducts();
-  }
-
-  Future<void> _loadProducts() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final products = await _productService.getAllProducts();
-      setState(() {
-        _allProducts = products;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading products: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  List<ProductModel> get _filteredProducts {
-    if (_searchQuery.isEmpty) {
-      return _allProducts.where((p) => p.stock > 0).toList();
-    }
-    return _allProducts
-        .where((p) =>
-            p.name.toLowerCase().contains(_searchQuery.toLowerCase()) &&
-            p.stock > 0)
-        .toList();
-  }
-
-  void _addToCart(ProductModel product) {
-    final existingIndex = _cartItems.indexWhere(
-      (item) => item['productId'] == product.id,
-    );
-
-    if (existingIndex >= 0) {
-      // Increase quantity if already in cart
-      final currentQuantity = _cartItems[existingIndex]['quantity'] as int;
-      if (currentQuantity < product.stock) {
-        setState(() {
-          _cartItems[existingIndex]['quantity'] = currentQuantity + 1;
-        });
-        HapticFeedback.lightImpact();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Insufficient stock. Available: ${product.stock}'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } else {
-      // Add new item to cart
-      setState(() {
-        _cartItems.add({
-          'productId': product.id,
-          'product': product,
-          'quantity': 1,
-        });
-      });
-      HapticFeedback.mediumImpact();
+    // Initialize cart items from arguments if provided
+    if (widget.cartItems != null) {
+      _cartItems = List.from(widget.cartItems!);
     }
   }
 
@@ -117,7 +56,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    final product = _cartItems[index]['product'] as ProductModel;
+    final product = _cartItems[index]['productModel'] as ProductModel;
     if (newQuantity > product.stock) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -144,11 +83,200 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get _cartTotal {
     double total = 0;
     for (final item in _cartItems) {
-      final product = item['product'] as ProductModel;
+      final product = item['productModel'] as ProductModel;
       final quantity = item['quantity'] as int;
       total += product.sellingPrice * quantity;
     }
     return total;
+  }
+
+  Future<Map<String, dynamic>?> _showPaymentDialog(double totalAmount) async {
+    _selectedPaymentMethod = null;
+    _paymentAmount = null;
+
+    return await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Payment Details'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Total Amount: ₱${totalAmount.toStringAsFixed(2)}',
+                  style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryLight,
+                  ),
+                ),
+                SizedBox(height: 3.h),
+
+                // Payment Method Selection
+                Text(
+                  'Payment Method',
+                  style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('Cash'),
+                        value: 'cash',
+                        groupValue: _selectedPaymentMethod,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedPaymentMethod = value;
+                          });
+                        },
+                        dense: true,
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('GCash'),
+                        value: 'gcash',
+                        groupValue: _selectedPaymentMethod,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedPaymentMethod = value;
+                          });
+                        },
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('Credit'),
+                        value: 'credit',
+                        groupValue: _selectedPaymentMethod,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedPaymentMethod = value;
+                          });
+                        },
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: 3.h),
+
+                // Payment Amount Input
+                Text(
+                  'Payment Amount',
+                  style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    hintText: 'Enter payment amount',
+                    prefixText: '₱',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    _paymentAmount = double.tryParse(value) ?? 0.0;
+                  },
+                ),
+
+                SizedBox(height: 2.h),
+
+                // Change Display
+                if (_paymentAmount != null &&
+                    _paymentAmount! >= totalAmount) ...[
+                  Container(
+                    padding: EdgeInsets.all(2.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successLight.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.successLight.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Change:',
+                          style:
+                              AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '₱${(_paymentAmount! - totalAmount).toStringAsFixed(2)}',
+                          style:
+                              AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.successLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (_paymentAmount != null &&
+                    _paymentAmount! < totalAmount) ...[
+                  Container(
+                    padding: EdgeInsets.all(2.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorLight.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.errorLight.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      'Insufficient payment amount',
+                      style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.errorLight,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: (_selectedPaymentMethod != null &&
+                      _paymentAmount != null &&
+                      _paymentAmount! >= totalAmount)
+                  ? () => Navigator.pop(context, {
+                        'paymentMethod': _selectedPaymentMethod,
+                        'paymentAmount': _paymentAmount,
+                        'change': _paymentAmount! - totalAmount,
+                      })
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryLight,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Complete Payment'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _completePurchase() async {
@@ -162,34 +290,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    // Confirm purchase
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Purchase'),
-        content: Text(
-          'Total Amount: ₱${_cartTotal.toStringAsFixed(2)}\n\n'
-          'Items: ${_cartItems.length}\n\n'
-          'Proceed with purchase?',
+    if (_selectedPaymentMethod == null || _paymentAmount == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Please select payment method and enter payment amount'),
+          backgroundColor: Colors.orange,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryLight,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
+      );
+      return;
+    }
 
-    if (confirmed != true) return;
+    if (_paymentAmount! < _cartTotal) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment amount is insufficient'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
@@ -198,16 +318,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       // Prepare transaction items
       final transactionItems = _cartItems.map((item) {
+        final productModel = item['productModel'] as ProductModel;
         return {
-          'productId': item['productId'] as int,
+          'productId': productModel.id as int,
           'quantity': item['quantity'] as int,
         };
       }).toList();
 
-      // Create transaction (this will decrease stock automatically)
-      await _transactionService.createTransaction(transactionItems);
+      // Create transaction with payment data (this will decrease stock automatically)
+      await _transactionService.createTransaction(
+        transactionItems,
+        paymentMethod: _selectedPaymentMethod!,
+        paymentAmount: _paymentAmount!,
+        customerName: _customerName,
+        customerContact: _customerContact,
+      );
 
       HapticFeedback.mediumImpact();
+
+      final change = _paymentAmount! - _cartTotal;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -222,7 +351,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 SizedBox(width: 3.w),
                 Expanded(
                   child: Text(
-                    'Purchase completed! Total: ₱${_cartTotal.toStringAsFixed(2)}',
+                    'Purchase completed! Total: ₱${_cartTotal.toStringAsFixed(2)}, Change: ₱${change.toStringAsFixed(2)}',
                     style: const TextStyle(color: Colors.white),
                   ),
                 ),
@@ -234,13 +363,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         );
 
-        // Clear cart
+        // Clear cart and return success
         setState(() {
           _cartItems.clear();
+          _selectedPaymentMethod = null;
+          _paymentAmount = null;
         });
 
-        // Reload products to update stock
-        await _loadProducts();
+        // Return true to indicate successful purchase
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
@@ -292,8 +423,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get _singleProductTotal {
     if (widget.product == null) return 0.0;
     final price = double.tryParse(
-      (widget.product!["sellingPrice"] as String?)?.replaceAll('₱', '') ?? '0'
-    ) ?? 0.0;
+            (widget.product!["sellingPrice"] as String?)?.replaceAll('₱', '') ??
+                '0') ??
+        0.0;
     return price * _singleProductQuantity;
   }
 
@@ -311,35 +443,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    // Confirm purchase
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Purchase'),
-        content: Text(
-          'Product: ${widget.product!["name"]}\n'
-          'Quantity: $_singleProductQuantity\n'
-          'Total Amount: ₱${_singleProductTotal.toStringAsFixed(2)}\n\n'
-          'Proceed with purchase?',
+    if (_selectedPaymentMethod == null || _paymentAmount == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Please select payment method and enter payment amount'),
+          backgroundColor: Colors.orange,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryLight,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Buy'),
-          ),
-        ],
-      ),
-    );
+      );
+      return;
+    }
 
-    if (confirmed != true) return;
+    if (_paymentAmount! < _singleProductTotal) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment amount is insufficient'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
@@ -354,7 +477,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       ];
 
-      await _transactionService.createTransaction(transactionItems);
+      await _transactionService.createTransaction(
+        transactionItems,
+        paymentMethod: _selectedPaymentMethod!,
+        paymentAmount: _paymentAmount!,
+        customerName: _customerName,
+        customerContact: _customerContact,
+      );
 
       HapticFeedback.mediumImpact();
 
@@ -371,7 +500,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 SizedBox(width: 3.w),
                 Expanded(
                   child: Text(
-                    'Purchase completed! Total: ₱${_singleProductTotal.toStringAsFixed(2)}',
+                    'Purchase completed! Total: ₱${_singleProductTotal.toStringAsFixed(2)}, Change: ₱${(_paymentAmount! - _singleProductTotal).toStringAsFixed(2)}',
                     style: const TextStyle(color: Colors.white),
                   ),
                 ),
@@ -402,6 +531,533 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         });
       }
     }
+  }
+
+  Widget _buildCartOnlyCheckout() {
+    return Scaffold(
+      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Cart Checkout'),
+        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+        foregroundColor: AppTheme.lightTheme.colorScheme.onSurface,
+        elevation: 0,
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: CustomIconWidget(
+            iconName: 'arrow_back',
+            color: AppTheme.lightTheme.colorScheme.onSurface,
+            size: 6.w,
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Cart section (full width)
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.surface,
+              ),
+              child: Column(
+                children: [
+                  // Cart header
+                  Container(
+                    padding: EdgeInsets.all(3.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryLight,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        CustomIconWidget(
+                          iconName: 'shopping_cart',
+                          color: Colors.white,
+                          size: 6.w,
+                        ),
+                        SizedBox(width: 2.w),
+                        Expanded(
+                          child: Text(
+                            'Cart (${_cartItems.length})',
+                            style: AppTheme.lightTheme.textTheme.titleLarge
+                                ?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Cart items
+                  Expanded(
+                    child: _cartItems.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                CustomIconWidget(
+                                  iconName: 'shopping_cart',
+                                  color: AppTheme.textSecondaryLight,
+                                  size: 15.w,
+                                ),
+                                SizedBox(height: 2.h),
+                                Text(
+                                  'Your cart is empty',
+                                  style: AppTheme
+                                      .lightTheme.textTheme.titleMedium
+                                      ?.copyWith(
+                                    color: AppTheme.textSecondaryLight,
+                                  ),
+                                ),
+                                SizedBox(height: 2.h),
+                                Text(
+                                  'Add items from the Products tab',
+                                  style: AppTheme
+                                      .lightTheme.textTheme.bodyMedium
+                                      ?.copyWith(
+                                    color: AppTheme.textSecondaryLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: EdgeInsets.all(2.w),
+                            itemCount: _cartItems.length,
+                            itemBuilder: (context, index) {
+                              return CartItemWidget(
+                                product: _cartItems[index]['productModel']
+                                    as ProductModel,
+                                quantity: _cartItems[index]['quantity'] as int,
+                                onQuantityChanged: (newQuantity) {
+                                  _updateCartQuantity(index, newQuantity);
+                                },
+                                onRemove: () {
+                                  _removeFromCart(index);
+                                },
+                              );
+                            },
+                          ),
+                  ),
+
+                  // Customer Details Section (Optional)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.lightTheme.colorScheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: AppTheme.dividerLight,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Customer Details Header with Toggle
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _showCustomerDetails = !_showCustomerDetails;
+                            });
+                          },
+                          child: Padding(
+                            padding: EdgeInsets.all(3.w),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    CustomIconWidget(
+                                      iconName: 'person',
+                                      color: AppTheme.primaryLight,
+                                      size: 5.w,
+                                    ),
+                                    SizedBox(width: 2.w),
+                                    Text(
+                                      'Customer Details (Optional)',
+                                      style: AppTheme
+                                          .lightTheme.textTheme.titleMedium
+                                          ?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                CustomIconWidget(
+                                  iconName: _showCustomerDetails
+                                      ? 'expand_less'
+                                      : 'expand_more',
+                                  color: AppTheme.textSecondaryLight,
+                                  size: 5.w,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Customer Input Fields (Conditional)
+                        if (_showCustomerDetails) ...[
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 3.w),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Customer Name Input
+                                Text(
+                                  'Customer Name',
+                                  style: AppTheme
+                                      .lightTheme.textTheme.titleSmall
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SizedBox(height: 1.h),
+                                TextFormField(
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter customer name',
+                                    prefixIcon: CustomIconWidget(
+                                      iconName: 'person',
+                                      color: AppTheme.textSecondaryLight,
+                                      size: 5.w,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _customerName = value.trim().isEmpty
+                                          ? null
+                                          : value.trim();
+                                    });
+                                  },
+                                ),
+
+                                SizedBox(height: 2.h),
+
+                                // Customer Contact Input
+                                Text(
+                                  'Contact Number',
+                                  style: AppTheme
+                                      .lightTheme.textTheme.titleSmall
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SizedBox(height: 1.h),
+                                TextFormField(
+                                  keyboardType: TextInputType.phone,
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter contact number',
+                                    prefixIcon: CustomIconWidget(
+                                      iconName: 'phone',
+                                      color: AppTheme.textSecondaryLight,
+                                      size: 5.w,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _customerContact = value.trim().isEmpty
+                                          ? null
+                                          : value.trim();
+                                    });
+                                  },
+                                ),
+                                SizedBox(height: 3.w),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Payment Details Section
+                  Container(
+                    padding: EdgeInsets.all(3.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.lightTheme.colorScheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: AppTheme.dividerLight,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Payment Details',
+                          style: AppTheme.lightTheme.textTheme.titleMedium
+                              ?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+
+                        // Payment Method Selection
+                        Text(
+                          'Payment Method',
+                          style: AppTheme.lightTheme.textTheme.titleSmall
+                              ?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 1.h),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: const Text('Cash'),
+                                value: 'cash',
+                                groupValue: _selectedPaymentMethod,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedPaymentMethod = value;
+                                  });
+                                },
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: const Text('GCash'),
+                                value: 'gcash',
+                                groupValue: _selectedPaymentMethod,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedPaymentMethod = value;
+                                  });
+                                },
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: const Text('Credit'),
+                                value: 'credit',
+                                groupValue: _selectedPaymentMethod,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedPaymentMethod = value;
+                                  });
+                                },
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: 2.h),
+
+                        // Payment Amount Input
+                        Text(
+                          'Payment Amount',
+                          style: AppTheme.lightTheme.textTheme.titleSmall
+                              ?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 1.h),
+                        TextFormField(
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            hintText: 'Enter payment amount',
+                            prefixText: '₱',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              _paymentAmount = double.tryParse(value) ?? 0.0;
+                            });
+                          },
+                        ),
+
+                        // Change Display
+                        if (_paymentAmount != null &&
+                            _paymentAmount! >= _cartTotal) ...[
+                          SizedBox(height: 1.h),
+                          Container(
+                            padding: EdgeInsets.all(2.w),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppTheme.successLight.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.successLight
+                                    .withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Change:',
+                                  style: AppTheme.lightTheme.textTheme.bodyLarge
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  '₱${(_paymentAmount! - _cartTotal).toStringAsFixed(2)}',
+                                  style: AppTheme.lightTheme.textTheme.bodyLarge
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.successLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (_paymentAmount != null &&
+                            _paymentAmount! < _cartTotal) ...[
+                          SizedBox(height: 1.h),
+                          Container(
+                            padding: EdgeInsets.all(2.w),
+                            decoration: BoxDecoration(
+                              color: AppTheme.errorLight.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color:
+                                    AppTheme.errorLight.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Text(
+                              'Insufficient payment amount',
+                              style: AppTheme.lightTheme.textTheme.bodyMedium
+                                  ?.copyWith(
+                                color: AppTheme.errorLight,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Cart footer with total and checkout button
+                  Container(
+                    padding: EdgeInsets.all(3.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.lightTheme.colorScheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: AppTheme.dividerLight,
+                          width: 1,
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Total:',
+                              style: AppTheme.lightTheme.textTheme.titleLarge
+                                  ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              '₱${_cartTotal.toStringAsFixed(2)}',
+                              style: AppTheme.lightTheme.textTheme.titleLarge
+                                  ?.copyWith(
+                                color: AppTheme.primaryLight,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 2.h),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isProcessing ||
+                                    _cartItems.isEmpty ||
+                                    _selectedPaymentMethod == null ||
+                                    _paymentAmount == null ||
+                                    _paymentAmount! < _cartTotal
+                                ? null
+                                : _completePurchase,
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 2.h),
+                              backgroundColor: AppTheme.primaryLight,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: _isProcessing
+                                ? SizedBox(
+                                    width: 5.w,
+                                    height: 5.w,
+                                    child: const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CustomIconWidget(
+                                        iconName: 'check_circle',
+                                        color: Colors.white,
+                                        size: 5.w,
+                                      ),
+                                      SizedBox(width: 2.w),
+                                      Text(
+                                        'Complete Purchase',
+                                        style: AppTheme
+                                            .lightTheme.textTheme.titleMedium
+                                            ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSingleProductCheckout() {
@@ -489,14 +1145,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           children: [
                             Text(
                               productName,
-                              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                              style: AppTheme.lightTheme.textTheme.titleLarge
+                                  ?.copyWith(
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                             SizedBox(height: 1.h),
                             Text(
                               category,
-                              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                              style: AppTheme.lightTheme.textTheme.bodyMedium
+                                  ?.copyWith(
                                 color: AppTheme.textSecondaryLight,
                               ),
                             ),
@@ -504,7 +1162,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               SizedBox(height: 1.h),
                               Text(
                                 description,
-                                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                style: AppTheme.lightTheme.textTheme.bodySmall
+                                    ?.copyWith(
                                   color: AppTheme.textSecondaryLight,
                                 ),
                                 maxLines: 2,
@@ -524,7 +1183,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 SizedBox(width: 1.w),
                                 Text(
                                   'Stock: $stock',
-                                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                  style: AppTheme.lightTheme.textTheme.bodySmall
+                                      ?.copyWith(
                                     color: stock <= 10
                                         ? AppTheme.errorLight
                                         : AppTheme.textSecondaryLight,
@@ -582,7 +1242,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           decoration: BoxDecoration(
                             color: _singleProductQuantity > 1
                                 ? AppTheme.lightTheme.colorScheme.primary
-                                : AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.3),
+                                : AppTheme.lightTheme.colorScheme.outline
+                                    .withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Center(
@@ -605,7 +1266,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           color: AppTheme.lightTheme.colorScheme.surface,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.3),
+                            color: AppTheme.lightTheme.colorScheme.outline
+                                .withValues(alpha: 0.3),
                             width: 1,
                           ),
                         ),
@@ -613,7 +1275,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           children: [
                             Text(
                               _singleProductQuantity.toString(),
-                              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                              style: AppTheme
+                                  .lightTheme.textTheme.headlineMedium
+                                  ?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: AppTheme.lightTheme.colorScheme.primary,
                               ),
@@ -621,7 +1285,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             SizedBox(height: 0.5.h),
                             Text(
                               'pieces',
-                              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                              style: AppTheme.lightTheme.textTheme.bodySmall
+                                  ?.copyWith(
                                 color: AppTheme.lightTheme.colorScheme.outline,
                               ),
                             ),
@@ -640,7 +1305,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           decoration: BoxDecoration(
                             color: _singleProductQuantity < stock
                                 ? AppTheme.lightTheme.colorScheme.primary
-                                : AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.3),
+                                : AppTheme.lightTheme.colorScheme.outline
+                                    .withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Center(
@@ -695,7 +1361,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                       Text(
                         sellingPrice,
-                        style: AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
+                        style:
+                            AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -711,7 +1378,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                       Text(
                         '$_singleProductQuantity',
-                        style: AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
+                        style:
+                            AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -728,13 +1396,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     children: [
                       Text(
                         'Total:',
-                        style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                        style:
+                            AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
                         '₱${_singleProductTotal.toStringAsFixed(2)}',
-                        style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                        style:
+                            AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                           color: AppTheme.primaryLight,
                           fontWeight: FontWeight.w700,
                         ),
@@ -745,14 +1415,311 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
 
-            SizedBox(height: 6.h),
+            SizedBox(height: 4.h),
+
+            // Customer Details Section (Optional)
+            Container(
+              padding: EdgeInsets.all(4.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Customer Details Header with Toggle
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _showCustomerDetails = !_showCustomerDetails;
+                      });
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            CustomIconWidget(
+                              iconName: 'person',
+                              color: AppTheme.primaryLight,
+                              size: 5.w,
+                            ),
+                            SizedBox(width: 2.w),
+                            Text(
+                              'Customer Details (Optional)',
+                              style: AppTheme.lightTheme.textTheme.titleMedium
+                                  ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        CustomIconWidget(
+                          iconName: _showCustomerDetails
+                              ? 'expand_less'
+                              : 'expand_more',
+                          color: AppTheme.textSecondaryLight,
+                          size: 5.w,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Customer Input Fields (Conditional)
+                  if (_showCustomerDetails) ...[
+                    SizedBox(height: 3.h),
+                    // Customer Name Input
+                    Text(
+                      'Customer Name',
+                      style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 1.h),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        hintText: 'Enter customer name',
+                        prefixIcon: CustomIconWidget(
+                          iconName: 'person',
+                          color: AppTheme.textSecondaryLight,
+                          size: 5.w,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _customerName =
+                              value.trim().isEmpty ? null : value.trim();
+                        });
+                      },
+                    ),
+
+                    SizedBox(height: 2.h),
+
+                    // Customer Contact Input
+                    Text(
+                      'Contact Number',
+                      style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 1.h),
+                    TextFormField(
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: 'Enter contact number',
+                        prefixIcon: CustomIconWidget(
+                          iconName: 'phone',
+                          color: AppTheme.textSecondaryLight,
+                          size: 5.w,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _customerContact =
+                              value.trim().isEmpty ? null : value.trim();
+                        });
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            SizedBox(height: 4.h),
+
+            // Payment Details Card
+            Container(
+              padding: EdgeInsets.all(4.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Payment Details',
+                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+
+                  // Payment Method Selection
+                  Text(
+                    'Payment Method',
+                    style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 1.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('Cash'),
+                          value: 'cash',
+                          groupValue: _selectedPaymentMethod,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPaymentMethod = value;
+                            });
+                          },
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('GCash'),
+                          value: 'gcash',
+                          groupValue: _selectedPaymentMethod,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPaymentMethod = value;
+                            });
+                          },
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('Credit'),
+                          value: 'credit',
+                          groupValue: _selectedPaymentMethod,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPaymentMethod = value;
+                            });
+                          },
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  SizedBox(height: 2.h),
+
+                  // Payment Amount Input
+                  Text(
+                    'Payment Amount',
+                    style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 1.h),
+                  TextFormField(
+                    keyboardType:
+                        TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      hintText: 'Enter payment amount',
+                      prefixText: '₱',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _paymentAmount = double.tryParse(value) ?? 0.0;
+                      });
+                    },
+                  ),
+
+                  // Change Display
+                  if (_paymentAmount != null &&
+                      _paymentAmount! >= _singleProductTotal) ...[
+                    SizedBox(height: 1.h),
+                    Container(
+                      padding: EdgeInsets.all(2.w),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successLight.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppTheme.successLight.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Change:',
+                            style: AppTheme.lightTheme.textTheme.bodyLarge
+                                ?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '₱${(_paymentAmount! - _singleProductTotal).toStringAsFixed(2)}',
+                            style: AppTheme.lightTheme.textTheme.bodyLarge
+                                ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.successLight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (_paymentAmount != null &&
+                      _paymentAmount! < _singleProductTotal) ...[
+                    SizedBox(height: 1.h),
+                    Container(
+                      padding: EdgeInsets.all(2.w),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorLight.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppTheme.errorLight.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Text(
+                        'Insufficient payment amount',
+                        style:
+                            AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.errorLight,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            SizedBox(height: 4.h),
 
             // Action Buttons
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _isProcessing ? null : () => Navigator.pop(context),
+                    onPressed:
+                        _isProcessing ? null : () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
                       padding: EdgeInsets.symmetric(vertical: 3.h),
                       shape: RoundedRectangleBorder(
@@ -761,7 +1728,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     child: Text(
                       'Cancel',
-                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                      style:
+                          AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -771,7 +1739,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Expanded(
                   flex: 2,
                   child: ElevatedButton(
-                    onPressed: _isProcessing || stock == 0
+                    onPressed: _isProcessing ||
+                            stock == 0 ||
+                            _selectedPaymentMethod == null ||
+                            _paymentAmount == null ||
+                            _paymentAmount! < _singleProductTotal
                         ? null
                         : _completeSingleProductPurchase,
                     style: ElevatedButton.styleFrom(
@@ -788,7 +1760,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             height: 5.w,
                             child: const CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : Row(
@@ -802,7 +1775,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               SizedBox(width: 2.w),
                               Text(
                                 'Buy',
-                                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                                style: AppTheme.lightTheme.textTheme.titleMedium
+                                    ?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -828,320 +1802,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return _buildSingleProductCheckout();
     }
 
-    // Otherwise show the regular cart checkout
-    return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Checkout'),
-        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
-        foregroundColor: AppTheme.lightTheme.colorScheme.onSurface,
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          // Search bar
-          ProductSearchWidget(
-            onSearchChanged: (query) {
-              setState(() {
-                _searchQuery = query;
-              });
-            },
-          ),
+    // Show cart-only checkout if cartOnly is true
+    if (widget.cartOnly) {
+      return _buildCartOnlyCheckout();
+    }
 
-          // Products list and cart
-          Expanded(
-            child: Row(
-              children: [
-                // Products list
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    color: AppTheme.lightTheme.scaffoldBackgroundColor,
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _filteredProducts.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    CustomIconWidget(
-                                      iconName: 'inventory',
-                                      color: AppTheme.textSecondaryLight,
-                                      size: 15.w,
-                                    ),
-                                    SizedBox(height: 2.h),
-                                    Text(
-                                      _searchQuery.isEmpty
-                                          ? 'No products available'
-                                          : 'No products found',
-                                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                                        color: AppTheme.textSecondaryLight,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.builder(
-                                padding: EdgeInsets.all(2.w),
-                                itemCount: _filteredProducts.length,
-                                itemBuilder: (context, index) {
-                                  final product = _filteredProducts[index];
-                                  final inCart = _cartItems.any(
-                                    (item) => item['productId'] == product.id,
-                                  );
-                                  final cartItem = inCart
-                                      ? _cartItems.firstWhere(
-                                          (item) => item['productId'] == product.id,
-                                        )
-                                      : null;
-                                  final cartQuantity = cartItem?['quantity'] as int? ?? 0;
-
-                                  return Card(
-                                    margin: EdgeInsets.only(bottom: 2.h),
-                                    child: ListTile(
-                                      leading: CircleAvatar(
-                                        backgroundColor: AppTheme.primaryLight.withValues(alpha: 0.1),
-                                        child: CustomIconWidget(
-                                          iconName: 'inventory',
-                                          color: AppTheme.primaryLight,
-                                          size: 5.w,
-                                        ),
-                                      ),
-                                      title: Text(
-                                        product.name,
-                                        style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      subtitle: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            '₱${product.sellingPrice.toStringAsFixed(2)}',
-                                            style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
-                                              color: AppTheme.primaryLight,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          SizedBox(height: 0.5.h),
-                                          Text(
-                                            'Stock: ${product.stock}',
-                                            style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                                              color: product.stock <= 10
-                                                  ? AppTheme.errorLight
-                                                  : AppTheme.textSecondaryLight,
-                                            ),
-                                          ),
-                                          if (inCart) ...[
-                                            SizedBox(height: 0.5.h),
-                                            Text(
-                                              'In cart: $cartQuantity',
-                                              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                                                color: AppTheme.successLight,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      trailing: IconButton(
-                                        onPressed: product.stock > 0
-                                            ? () => _addToCart(product)
-                                            : null,
-                                        icon: CustomIconWidget(
-                                          iconName: 'add_shopping_cart',
-                                          color: product.stock > 0
-                                              ? AppTheme.primaryLight
-                                              : AppTheme.textDisabledLight,
-                                          size: 6.w,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                  ),
-                ),
-
-                // Cart section
-                Container(
-                  width: 40.w,
-                  decoration: BoxDecoration(
-                    color: AppTheme.lightTheme.colorScheme.surface,
-                    border: Border(
-                      left: BorderSide(
-                        color: AppTheme.dividerLight,
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      // Cart header
-                      Container(
-                        padding: EdgeInsets.all(3.w),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryLight,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            CustomIconWidget(
-                              iconName: 'shopping_cart',
-                              color: Colors.white,
-                              size: 6.w,
-                            ),
-                            SizedBox(width: 2.w),
-                            Expanded(
-                              child: Text(
-                                'Cart (${_cartItems.length})',
-                                style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Cart items
-                      Expanded(
-                        child: _cartItems.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    CustomIconWidget(
-                                      iconName: 'shopping_cart',
-                                      color: AppTheme.textSecondaryLight,
-                                      size: 15.w,
-                                    ),
-                                    SizedBox(height: 2.h),
-                                    Text(
-                                      'Cart is empty',
-                                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                                        color: AppTheme.textSecondaryLight,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.builder(
-                                padding: EdgeInsets.all(2.w),
-                                itemCount: _cartItems.length,
-                                itemBuilder: (context, index) {
-                                  return CartItemWidget(
-                                    product: _cartItems[index]['product'] as ProductModel,
-                                    quantity: _cartItems[index]['quantity'] as int,
-                                    onQuantityChanged: (newQuantity) {
-                                      _updateCartQuantity(index, newQuantity);
-                                    },
-                                    onRemove: () {
-                                      _removeFromCart(index);
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-
-                      // Cart footer with total and checkout button
-                      Container(
-                        padding: EdgeInsets.all(3.w),
-                        decoration: BoxDecoration(
-                          color: AppTheme.lightTheme.colorScheme.surface,
-                          border: Border(
-                            top: BorderSide(
-                              color: AppTheme.dividerLight,
-                              width: 1,
-                            ),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, -2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Total:',
-                                  style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  '₱${_cartTotal.toStringAsFixed(2)}',
-                                  style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                                    color: AppTheme.primaryLight,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 2.h),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed:
-                                    _isProcessing || _cartItems.isEmpty ? null : _completePurchase,
-                                style: ElevatedButton.styleFrom(
-                                  padding: EdgeInsets.symmetric(vertical: 2.h),
-                                  backgroundColor: AppTheme.primaryLight,
-                                  foregroundColor: Colors.white,
-                                ),
-                                child: _isProcessing
-                                    ? SizedBox(
-                                        width: 5.w,
-                                        height: 5.w,
-                                        child: const CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                        ),
-                                      )
-                                    : Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          CustomIconWidget(
-                                            iconName: 'check_circle',
-                                            color: Colors.white,
-                                            size: 5.w,
-                                          ),
-                                          SizedBox(width: 2.w),
-                                          Text(
-                                            'Complete Purchase',
-                                            style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    // Default to cart-only if no specific mode
+    return _buildCartOnlyCheckout();
   }
 }
-

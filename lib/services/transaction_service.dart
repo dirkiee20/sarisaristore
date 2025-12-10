@@ -12,6 +12,10 @@ class TransactionService {
   Future<int> createTransaction(
     List<Map<String, dynamic>> items, {
     String? notes,
+    String? paymentMethod,
+    double? paymentAmount,
+    String? customerName,
+    String? customerContact,
   }) async {
     if (items.isEmpty) {
       throw Exception('Transaction must have at least one item');
@@ -38,7 +42,8 @@ class TransactionService {
 
       // Check stock availability
       if (product.stock < quantity) {
-        throw Exception('Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: $quantity');
+        throw Exception(
+            'Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: $quantity');
       }
 
       // Calculate item totals
@@ -68,6 +73,10 @@ class TransactionService {
       totalAmount: totalAmount,
       totalProfit: totalProfit,
       notes: notes,
+      paymentMethod: paymentMethod,
+      paymentAmount: paymentAmount,
+      customerName: customerName,
+      customerContact: customerContact,
     );
 
     // Insert transaction and items
@@ -105,11 +114,13 @@ class TransactionService {
     DateTime startDate,
     DateTime endDate,
   ) async {
-    return await _transactionRepository.getTransactionsByDateRange(startDate, endDate);
+    return await _transactionRepository.getTransactionsByDateRange(
+        startDate, endDate);
   }
 
   /// Get transaction items by transaction ID
-  Future<List<TransactionItemModel>> getTransactionItems(int transactionId) async {
+  Future<List<TransactionItemModel>> getTransactionItems(
+      int transactionId) async {
     return await _transactionRepository.getTransactionItems(transactionId);
   }
 
@@ -146,4 +157,3 @@ class TransactionService {
     return await _transactionRepository.deleteTransaction(id);
   }
 }
-

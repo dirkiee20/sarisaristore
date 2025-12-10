@@ -1,0 +1,12 @@
+# APK files (comment out if you want to commit APKs)
+*.apk
+
+# Node modules
+node_modules/
+
+# Railway deployment files
+.railway/
+
+# Logs
+*.log
+npm-debug.log*

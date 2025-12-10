@@ -1,0 +1,17 @@
+{
+  "name": "sarisari-pro-apk-deploy",
+  "version": "1.0.0",
+  "description": "APK deployment site for Sarisari Pro Flutter app",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve . -p 3000",
+    "deploy": "echo 'Deploy to Railway using railway deploy command'"
+  },
+  "keywords": ["flutter", "apk", "android", "deployment"],
+  "author": "Sarisari Pro Team",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "serve": "^14.2.1"
+  }
+}

@@ -6,6 +6,7 @@ import '../presentation/edit_product_screen/edit_product_screen.dart';
 import '../presentation/stock_management_tab/stock_management_tab.dart';
 import '../presentation/analytics_tab/analytics_tab.dart';
 import '../presentation/checkout_screen/checkout_screen.dart';
+import '../presentation/expenses_screen/expenses_screen.dart';
 
 class AppRoutes {
   // TODO: Add your routes here
@@ -17,6 +18,7 @@ class AppRoutes {
   static const String stockManagementTab = '/stock-management-tab';
   static const String analyticsTab = '/analytics-tab';
   static const String checkout = '/checkout';
+  static const String expenses = '/expenses';
 
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
@@ -34,10 +36,20 @@ class AppRoutes {
     },
     stockManagementTab: (context) => const StockManagementTab(),
     analyticsTab: (context) => const AnalyticsTab(),
+    expenses: (context) => const ExpensesScreen(),
     checkout: (context) {
-      final product =
-          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      return CheckoutScreen(product: product);
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map<String, dynamic>) {
+        final product = args['product'] as Map<String, dynamic>?;
+        final cartOnly = args['cartOnly'] as bool? ?? false;
+        final cartItems = args['cartItems'] as List<Map<String, dynamic>>?;
+        return CheckoutScreen(
+          product: product,
+          cartOnly: cartOnly,
+          cartItems: cartItems,
+        );
+      }
+      return const CheckoutScreen(cartOnly: true);
     },
     // TODO: Add your other routes here
   };

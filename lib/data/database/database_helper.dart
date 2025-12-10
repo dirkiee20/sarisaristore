@@ -22,8 +22,9 @@ class DatabaseHelper {
 
     return await sqflite.openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -66,6 +67,8 @@ class DatabaseHelper {
         total_profit REAL NOT NULL,
         transaction_date TEXT NOT NULL,
         notes TEXT,
+        payment_method TEXT,
+        payment_amount REAL,
         created_at TEXT NOT NULL
       )
     ''');
@@ -117,12 +120,36 @@ class DatabaseHelper {
     ''');
 
     // Create indexes for better query performance
-    await db.execute('CREATE INDEX idx_products_category ON products(category)');
+    await db
+        .execute('CREATE INDEX idx_products_category ON products(category)');
     await db.execute('CREATE INDEX idx_products_barcode ON products(barcode)');
-    await db.execute('CREATE INDEX idx_transactions_date ON transactions(transaction_date)');
-    await db.execute('CREATE INDEX idx_transaction_items_transaction ON transaction_items(transaction_id)');
-    await db.execute('CREATE INDEX idx_stock_adjustments_product ON stock_adjustments(product_id)');
-    await db.execute('CREATE INDEX idx_expenses_date ON expenses(expense_date)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_date ON transactions(transaction_date)');
+    await db.execute(
+        'CREATE INDEX idx_transaction_items_transaction ON transaction_items(transaction_id)');
+    await db.execute(
+        'CREATE INDEX idx_stock_adjustments_product ON stock_adjustments(product_id)');
+    await db
+        .execute('CREATE INDEX idx_expenses_date ON expenses(expense_date)');
+  }
+
+  /// Upgrade database
+  Future<void> _upgradeDB(
+      sqflite.Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add payment_method and payment_amount columns to transactions table
+      await db
+          .execute('ALTER TABLE transactions ADD COLUMN payment_method TEXT');
+      await db
+          .execute('ALTER TABLE transactions ADD COLUMN payment_amount REAL');
+    }
+    if (oldVersion < 3) {
+      // Add customer_name and customer_contact columns to transactions table
+      await db
+          .execute('ALTER TABLE transactions ADD COLUMN customer_name TEXT');
+      await db
+          .execute('ALTER TABLE transactions ADD COLUMN customer_contact TEXT');
+    }
   }
 
   /// Close database connection
@@ -142,4 +169,3 @@ class DatabaseHelper {
     await sqflite.deleteDatabase(path);
   }
 }
-

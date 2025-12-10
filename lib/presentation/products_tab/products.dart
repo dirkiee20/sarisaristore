@@ -31,6 +31,8 @@ class _ProductsTabState extends State<ProductsTab>
 
   List<ProductModel> _products = [];
   List<String> _categories = [];
+  List<Map<String, dynamic>> _cartItems =
+      []; // {productId, productModel, quantity}
 
   List<Map<String, dynamic>> get _filteredProducts {
     // Convert ProductModel to Map for compatibility with existing UI
@@ -140,6 +142,86 @@ class _ProductsTabState extends State<ProductsTab>
     _loadProducts();
   }
 
+  // Method to add product to cart
+  void _addToCart(Map<String, dynamic> product) {
+    final productId = product["id"] as int?;
+    if (productId == null) return;
+
+    // Find the corresponding ProductModel from _products
+    final productModel = _products.firstWhere(
+      (p) => p.id == productId,
+      orElse: () => ProductModel(
+        name: '',
+        category: '',
+        costPrice: 0.0,
+        sellingPrice: 0.0,
+        stock: 0,
+      ),
+    );
+
+    if (productModel.id == null) return; // Product not found
+
+    final existingIndex = _cartItems.indexWhere(
+      (item) => item['productId'] == productId,
+    );
+
+    if (existingIndex >= 0) {
+      // Increase quantity if already in cart
+      final currentQuantity = _cartItems[existingIndex]['quantity'] as int;
+      if (currentQuantity < productModel.stock) {
+        setState(() {
+          _cartItems[existingIndex]['quantity'] = currentQuantity + 1;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${productModel.name} quantity increased to ${currentQuantity + 1}'),
+            backgroundColor: AppTheme.successLight,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Cannot add more. Maximum stock: ${productModel.stock}'),
+            backgroundColor: AppTheme.warningLight,
+          ),
+        );
+      }
+    } else {
+      // Add new item to cart
+      setState(() {
+        _cartItems.add({
+          'productId': productId,
+          'productModel': productModel,
+          'quantity': 1,
+        });
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${productModel.name} added to cart'),
+          backgroundColor: AppTheme.successLight,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  // Check if product is in cart
+  bool _isInCart(int productId) {
+    return _cartItems.any((item) => item['productId'] == productId);
+  }
+
+  // Get cart quantity for product
+  int _getCartQuantity(int productId) {
+    final item = _cartItems.firstWhere(
+      (item) => item['productId'] == productId,
+      orElse: () => <String, dynamic>{},
+    );
+    return item.isNotEmpty ? (item['quantity'] as int) : 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -194,6 +276,16 @@ class _ProductsTabState extends State<ProductsTab>
                   // Quick actions
                   Row(
                     children: [
+                      IconButton(
+                        onPressed: _navigateToCart,
+                        icon: CustomIconWidget(
+                          iconName: 'shopping_cart',
+                          color: AppTheme.primaryLight,
+                          size: 24,
+                        ),
+                        tooltip: 'Cart',
+                      ),
+                      SizedBox(width: 1.w),
                       IconButton(
                         onPressed: _refreshProducts,
                         icon: CustomIconWidget(
@@ -271,12 +363,16 @@ class _ProductsTabState extends State<ProductsTab>
                             itemCount: filteredProducts.length,
                             itemBuilder: (context, index) {
                               final product = filteredProducts[index];
+                              final productId = product["id"] as int? ?? 0;
                               return ProductCardWidget(
                                 product: product,
                                 onTap: () => _navigateToProductDetails(product),
                                 onEdit: () => _editProduct(product),
                                 onDelete: () => _deleteProduct(product),
                                 onStockUpdate: () => _updateStock(product),
+                                onAddToCart: () => _addToCart(product),
+                                isInCart: _isInCart(productId),
+                                cartQuantity: _getCartQuantity(productId),
                               );
                             },
                           ),
@@ -499,6 +595,24 @@ class _ProductsTabState extends State<ProductsTab>
       _showHighProfit = false;
       _showRecentUpdates = false;
       _searchController.clear();
+    });
+  }
+
+  void _navigateToCart() {
+    Navigator.pushNamed(
+      context,
+      '/checkout',
+      arguments: {
+        'cartOnly': true,
+        'cartItems': _cartItems,
+      },
+    ).then((result) {
+      // Clear cart if purchase was completed
+      if (result == true) {
+        setState(() {
+          _cartItems.clear();
+        });
+      }
     });
   }
 

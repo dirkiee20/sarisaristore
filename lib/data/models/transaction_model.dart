@@ -6,6 +6,10 @@ class TransactionModel {
   final double totalProfit;
   final DateTime transactionDate;
   final String? notes;
+  final String? paymentMethod;
+  final double? paymentAmount;
+  final String? customerName;
+  final String? customerContact;
   final DateTime createdAt;
 
   TransactionModel({
@@ -15,6 +19,10 @@ class TransactionModel {
     required this.totalProfit,
     DateTime? transactionDate,
     this.notes,
+    this.paymentMethod,
+    this.paymentAmount,
+    this.customerName,
+    this.customerContact,
     DateTime? createdAt,
   })  : transactionNumber = transactionNumber ?? _generateTransactionNumber(),
         transactionDate = transactionDate ?? DateTime.now(),
@@ -34,6 +42,10 @@ class TransactionModel {
       'total_profit': totalProfit,
       'transaction_date': transactionDate.toIso8601String(),
       'notes': notes,
+      'payment_method': paymentMethod,
+      'payment_amount': paymentAmount,
+      'customer_name': customerName,
+      'customer_contact': customerContact,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -47,6 +59,12 @@ class TransactionModel {
       totalProfit: (map['total_profit'] as num).toDouble(),
       transactionDate: DateTime.parse(map['transaction_date'] as String),
       notes: map['notes'] as String?,
+      paymentMethod: map['payment_method'] as String?,
+      paymentAmount: map['payment_amount'] != null
+          ? (map['payment_amount'] as num).toDouble()
+          : null,
+      customerName: map['customer_name'] as String?,
+      customerContact: map['customer_contact'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
@@ -56,4 +74,3 @@ class TransactionModel {
     return 'TransactionModel(id: $id, transactionNumber: $transactionNumber, totalAmount: $totalAmount)';
   }
 }
-
