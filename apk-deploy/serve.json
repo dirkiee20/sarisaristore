@@ -1,0 +1,24 @@
+{
+  "public": ".",
+  "rewrites": [
+    {
+      "source": "/app-release.apk",
+      "destination": "/app-release.apk"
+    }
+  ],
+  "headers": [
+    {
+      "source": "*.apk",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.android.package-archive"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment; filename=\"app-release.apk\""
+        }
+      ]
+    }
+  ]
+}

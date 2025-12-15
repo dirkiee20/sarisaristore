@@ -113,43 +113,57 @@
             </ul>
         </div>
 
-        <a href="./app-release.apk" class="download-btn" id="downloadBtn" download="app-release.apk" type="application/vnd.android.package-archive">
+        <a href="./app-release.apk" class="download-btn" id="downloadBtn" download="app-release.apk" type="application/vnd.android.package-archive" onclick="return handleDownload(event)">
             📱 Download APK
         </a>
 
         <p class="version">Version 1.0.0 - Latest Release</p>
     </div>
     <script>
-        document.getElementById('downloadBtn').addEventListener('click', async function(e) {
+        async function handleDownload(e) {
+            // Try programmatic download first for better control
             e.preventDefault();
-            const url = this.getAttribute('href');
+            const url = './app-release.apk';
             const fileName = 'app-release.apk';
             
             try {
                 // Fetch the file as a blob
-                const response = await fetch(url);
-                
-                // Check if response is HTML (which means file not found or server fallback)
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.includes('text/html')) {
-                    alert('Error: APK file not found. Please ensure app-release.apk is in the same directory as index.html');
-                    return;
-                }
+                const response = await fetch(url, {
+                    cache: 'no-cache',
+                    headers: {
+                        'Accept': 'application/vnd.android.package-archive, application/octet-stream, */*'
+                    }
+                });
                 
                 if (!response.ok) {
-                    throw new Error('Failed to fetch APK file: ' + response.statusText);
+                    // Fallback to direct download
+                    console.warn('Fetch failed, trying direct download');
+                    window.location.href = url;
+                    return false;
                 }
                 
                 // Get the blob data
                 const blob = await response.blob();
                 
-                // Check if blob is actually HTML (small size and text content)
-                if (blob.size < 10000) {
-                    const text = await blob.text();
-                    if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-                        alert('Error: Server returned HTML instead of APK file. Please ensure app-release.apk exists in the directory.');
-                        return;
+                // APK files are ZIP files and start with "PK" (0x50 0x4B)
+                // Check if this is actually an APK file by reading the first bytes
+                const firstBytes = await blob.slice(0, 2).arrayBuffer();
+                const uint8Array = new Uint8Array(firstBytes);
+                const isZipFile = uint8Array[0] === 0x50 && uint8Array[1] === 0x4B; // "PK"
+                
+                // Also check if it's HTML by reading first few bytes as text
+                if (!isZipFile && blob.size < 100000) {
+                    const textPreview = await blob.slice(0, 100).text();
+                    if (textPreview.trim().startsWith('<!DOCTYPE') || textPreview.trim().startsWith('<html')) {
+                        alert('Error: Server returned HTML instead of APK file. Please ensure app-release.apk exists in the directory and the server is configured correctly.');
+                        console.error('Received HTML instead of APK. First 100 chars:', textPreview.substring(0, 100));
+                        return false;
                     }
+                }
+                
+                if (!isZipFile && blob.size > 100000) {
+                    // Large file, assume it's valid even if we can't verify
+                    console.log('Large file detected, proceeding with download');
                 }
                 
                 // Create a download link and trigger download
@@ -167,11 +181,15 @@
                     window.URL.revokeObjectURL(blobUrl);
                 }, 100);
                 
+                return false;
+                
             } catch (error) {
-                alert('Error downloading APK: ' + error.message);
                 console.error('Download error:', error);
+                // Fallback to direct download
+                window.location.href = url;
+                return false;
             }
-        });
+        }
     </script>
 </body>
 </html>
