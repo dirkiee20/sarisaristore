@@ -113,11 +113,65 @@
             </ul>
         </div>
 
-        <a href="./app-release.apk" class="download-btn" download>
+        <a href="./app-release.apk" class="download-btn" id="downloadBtn" download="app-release.apk" type="application/vnd.android.package-archive">
             📱 Download APK
         </a>
 
         <p class="version">Version 1.0.0 - Latest Release</p>
     </div>
+    <script>
+        document.getElementById('downloadBtn').addEventListener('click', async function(e) {
+            e.preventDefault();
+            const url = this.getAttribute('href');
+            const fileName = 'app-release.apk';
+            
+            try {
+                // Fetch the file as a blob
+                const response = await fetch(url);
+                
+                // Check if response is HTML (which means file not found or server fallback)
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('text/html')) {
+                    alert('Error: APK file not found. Please ensure app-release.apk is in the same directory as index.html');
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch APK file: ' + response.statusText);
+                }
+                
+                // Get the blob data
+                const blob = await response.blob();
+                
+                // Check if blob is actually HTML (small size and text content)
+                if (blob.size < 10000) {
+                    const text = await blob.text();
+                    if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+                        alert('Error: Server returned HTML instead of APK file. Please ensure app-release.apk exists in the directory.');
+                        return;
+                    }
+                }
+                
+                // Create a download link and trigger download
+                const blobUrl = window.URL.createObjectURL(blob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = blobUrl;
+                downloadLink.download = fileName;
+                downloadLink.style.display = 'none';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(downloadLink);
+                    window.URL.revokeObjectURL(blobUrl);
+                }, 100);
+                
+            } catch (error) {
+                alert('Error downloading APK: ' + error.message);
+                console.error('Download error:', error);
+            }
+        });
+    </script>
 </body>
 </html>
