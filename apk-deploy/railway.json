@@ -3,6 +3,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npx serve . -p $PORT"
+    "startCommand": "npx serve . -p $PORT --no-clipboard --no-compression"
   }
 }

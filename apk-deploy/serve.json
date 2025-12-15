@@ -1,14 +1,8 @@
 {
   "public": ".",
-  "rewrites": [
-    {
-      "source": "/app-release.apk",
-      "destination": "/app-release.apk"
-    }
-  ],
   "headers": [
     {
-      "source": "*.apk",
+      "source": "**/*.apk",
       "headers": [
         {
           "key": "Content-Type",
@@ -16,7 +10,11 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"app-release.apk\""
+          "value": "attachment"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
         }
       ]
     }

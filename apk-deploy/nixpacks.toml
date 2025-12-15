@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["nodejs-18_x"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "npx serve . -p $PORT --no-clipboard --no-compression"
