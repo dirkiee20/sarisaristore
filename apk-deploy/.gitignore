@@ -1,5 +1,6 @@
-# APK files (comment out if you want to commit APKs)
+# APK files - Allow app-release.apk to be committed for deployment
 *.apk
+!app-release.apk
 
 # Node modules
 node_modules/
